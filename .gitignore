@@ -1,0 +1,21 @@
+# Python and editor caches
+.claude/
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Generated figures and extracted intermediate text
+ae_distribution_z3400.png
+sim_layout.txt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Local run logs
+*.log
