@@ -61,6 +61,9 @@ PRADA_COSMOLOGY = {
 # 球对称 top-hat 坍缩的线性临界密度。Ludlow16 Appendix C 取 1.686。
 DELTA_SC = 1.686
 
+# 本轮按照用户要求保留旧结果，并在新输出文件名末尾添加 (1)。
+OUTPUT_TAG = "(1)"
+
 
 def scale_factor(z):
     """把红移 z 转换为尺度因子 a=1/(1+z)。
@@ -198,25 +201,6 @@ def peak_height_ludlow16(mass_msun, z):
 
 def ludlow_c0(z):
     """计算 Ludlow16 Appendix C2 的浓度归一化参数 c0(z)。
-
-    在完整的平滑破幂律中，浓度写成
-
-        c(nu,z) = c0(z) * (nu/nu0)^(-gamma1)
-                  * [1 + (nu/nu0)^(1/beta)]
-                    ^[-beta*(gamma2-gamma1)].
-
-    现在只实现第一个组成部分
-
-        c0(z) = 3.395 * (1+z)^(-0.215).
-
-    如何理解 c0：
-    - 它控制整条 c(nu) 曲线的总体纵向高度，所以称为“归一化参数”；
-    - 它随红移升高而缓慢减小；
-    - 它本身不是最终浓度；
-    - 严格来说，nu=nu0 时的最终浓度也不恰好等于 c0，因为方括号中的
-      平滑转折因子此时不等于 1。
-
-    c0 只依赖红移 z，与质量 M 和峰高 nu 都无关。
     """
     z = np.asarray(z, dtype=float)
     return 3.395 * (1.0 + z) ** (-0.215)
@@ -224,9 +208,6 @@ def ludlow_c0(z):
 
 def ludlow_transition_beta(z):
     """返回平滑转折宽度 beta(z)，对应 Ludlow16 Appendix C3。
-
-    beta 越大，两段幂律之间的转折越宽。这里把函数名写成
-    ``transition_beta``，以免和后面的质量吸积史参数 beta 混淆。
     """
     z = np.asarray(z, dtype=float)
     return 0.307 * (1.0 + z) ** 0.540
@@ -452,8 +433,10 @@ def concentration_prada12(mass_msun, z, cap_high_peak=False):
     if not cap_high_peak:
         return raw_concentration
 
-    # B1 的定义使所有红移的最低点都映射到 sigma'=1/1.393。
-    sigma_prime_at_minimum = 1.0 / 1.393
+    # 1.393 是参考时间变量 x_ref，不是最低点的 sigma^{-1}。
+    # B1 的定义使各红移的最低点映射到
+    # sigma'_min = 1 / sigma_min^{-1}(x_ref)。
+    sigma_prime_at_minimum = 1.0 / prada_inverse_sigma_min(1.393)
     return np.where(
         sigma_prime < sigma_prime_at_minimum,
         prada_c_min(x),
@@ -565,12 +548,14 @@ def make_figure1(output_directory):
     labels = [line.get_label() for line in lines]
     concentration_axis.legend(lines, labels, loc="upper right")
     figure.tight_layout()
-    figure.savefig(output_directory / "fig1_reproduction.png", dpi=220)
+    figure.savefig(
+        output_directory / f"fig1_reproduction{OUTPUT_TAG}.png", dpi=220
+    )
     plt.close(figure)
 
     data = np.column_stack((z, mass, concentration))
     np.savetxt(
-        output_directory / "fig1_reproduction.csv",
+        output_directory / f"fig1_reproduction{OUTPUT_TAG}.csv",
         data,
         delimiter=",",
         header="z,mass_msun,concentration_ludlow16",
@@ -631,7 +616,9 @@ def make_figure2(output_directory):
         axis.legend(loc="upper right")
     axes[1].set_xlabel(r"Redshift $z$")
 
-    figure.savefig(output_directory / "fig2_reproduction.png", dpi=220)
+    figure.savefig(
+        output_directory / f"fig2_reproduction{OUTPUT_TAG}.png", dpi=220
+    )
     plt.close(figure)
 
     ludlow_table = np.column_stack((z, ludlow_mass.T, ludlow_concentration.T))
@@ -642,14 +629,14 @@ def make_figure2(output_directory):
     ]
     header = ",".join(["z", *mass_columns, *concentration_columns])
     np.savetxt(
-        output_directory / "fig2_ludlow16.csv",
+        output_directory / f"fig2_ludlow16{OUTPUT_TAG}.csv",
         ludlow_table,
         delimiter=",",
         header=header,
         comments="",
     )
     np.savetxt(
-        output_directory / "fig2_prada12.csv",
+        output_directory / f"fig2_prada12{OUTPUT_TAG}.csv",
         prada_table,
         delimiter=",",
         header=header,
@@ -682,8 +669,15 @@ def main():
     make_figure1(output_directory)
     make_figure2(output_directory)
     print_key_values()
-    print("\nCreated fig1_reproduction.png and fig2_reproduction.png")
-    print("Created fig1_reproduction.csv, fig2_ludlow16.csv, fig2_prada12.csv")
+    print(
+        f"\nCreated fig1_reproduction{OUTPUT_TAG}.png "
+        f"and fig2_reproduction{OUTPUT_TAG}.png"
+    )
+    print(
+        f"Created fig1_reproduction{OUTPUT_TAG}.csv, "
+        f"fig2_ludlow16{OUTPUT_TAG}.csv, "
+        f"fig2_prada12{OUTPUT_TAG}.csv"
+    )
 
 if __name__ == "__main__":
     main()
