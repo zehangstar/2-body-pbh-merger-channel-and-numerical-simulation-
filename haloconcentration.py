@@ -230,8 +230,9 @@ def ludlow_nu0_published(z):
 
     这个函数保留原始公式，便于研究拟合本身。需要注意一个真实的外推问题：
     原文虽然声明适用至大约 z=9，但印刷出的多项式在 z 约为 7.8 时穿过零，
-    此后 nu0 为负，无法代入非整数幂。PBH 论文却把曲线画到了 z=12，因而
-    必然还使用了原文没有说明的延拓处理。
+    此后 nu0 为负，无法代入非整数幂。PBH 论文的浓度曲线画到了 z=12，
+    但具体处理尚未确认，不能据此断言作者必然使用了某种延拓。
+    该问题与 Fig. 9 的高质量吸积参数差异分开核对：后者只使用 C(M0,0)。
     """
     z = np.asarray(z, dtype=float)
     a = scale_factor(z)
@@ -473,6 +474,14 @@ def mass_accretion_parameters(mass0_msun, model):
     注意这里的 alpha、beta 是质量吸积史参数，不是 Ludlow16 浓度公式中的
     gamma1 和 transition_beta。A_cosmo=798 是 PBH 论文给出的常数。
     """
+    # Fig. 9 核对记录（2026-09-13）：原图 M0=1e13、1e14、1e15 M_sun 的
+    # (alpha,beta) 分别为 (0.2702,-0.904)、(0.3312,-1.014)、(0.3922,-1.124)。
+    # 它们来自 arXiv v1/v2 的 MAH_corea.pdf 矢量路径反求；低/高红移段结果一致。
+    # 在本代码的 Planck 参数和 A=798 下，这些参数不能同时满足 Appendix C1-C3。
+    # 推测：作者可能对高质量端另行指定/延拓了参数；尚无生成代码或作者说明，
+    # 不能排除参数表、实现差异或图文不一致，也未发现高红移处切换公式的证据。
+    # 本函数保留印刷公式；不将反求参数或跨轨迹排序作为修正。证据见
+    # SIMULATING_PBH_MERGERS_精读与复现.md 第 7.4.1 节。
     if model.lower() == "ludlow16":
         cosmology = LUDLOW_COSMOLOGY
     elif model.lower() == "prada12":
