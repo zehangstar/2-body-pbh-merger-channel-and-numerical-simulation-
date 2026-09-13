@@ -507,10 +507,10 @@ $\Omega_{m0}$ 替换同时消除差异。
 
 ### 7.5 当前人工对照结果
 
-今天生成：
+当天生成：
 
-- `fig1_reproduction.png`；
-- `fig2_reproduction.png`；
+- `fig1_reproduction(1).png`；
+- `fig2_reproduction(1).png`；
 - 三份相应的 CSV 曲线数据。
 
 关键中间值为
@@ -535,3 +535,72 @@ $$
 Fig. 1 的 $10^{12}M_\odot$ 晕回溯至 $z=12$ 时质量约为
 $3.25\times10^8M_\odot$，与论文图中的数量级一致。当前图已经复现主要曲线
 形状和排序；精确百分比误差将在提取原图锚点后统一计算。
+
+## 八、2026-09-13：9月9日质量吸积史阶段验收
+
+本阶段代码位于 `halohistory.py`，并调用 `haloconcentration.py` 中已经完成的
+Ludlow16 浓度和 Appendix C 质量吸积函数，没有复制第二份浓度模型。
+
+### 8.1 已完成的计算链
+
+对于给定的现今质量 $M_0$ 和红移数组，代码依次计算
+
+$$
+M_0\longrightarrow (z_{-2},\alpha,\beta)
+\longrightarrow M(z)\longrightarrow C[M(z),z]
+\longrightarrow R_{\rm vir}(z)\longrightarrow R_s(z).
+$$
+
+其中
+
+$$
+H(z)=H_0\sqrt{\Omega_{m0}(1+z)^3+\Omega_{\Lambda0}},
+\qquad
+\rho_{\rm crit}(z)=\frac{3H(z)^2}{8\pi G},
+$$
+
+$$
+R_{\rm vir}(z)=
+\left[\frac{3M(z)}{4\pi\,200\rho_{\rm crit}(z)}\right]^{1/3},
+\qquad
+R_s(z)=\frac{R_{\rm vir}(z)}{C[M(z),z]}.
+$$
+
+公开输入质量使用 $M_\odot$，半径输出使用 kpc。代码中的
+$G=4.30091\times10^{-6}\,{\rm kpc}\,({\rm km/s})^2M_\odot^{-1}$，并把
+$H_0=100h\,{\rm km\,s^{-1}\,Mpc^{-1}}$ 换成
+$0.1h\,{\rm km\,s^{-1}\,kpc^{-1}}$，所以临界密度直接以
+$M_\odot/{\rm kpc}^3$ 表示。
+
+### 8.2 Fig. 9 与人工数值锚点
+
+`make_figure9` 使用 $M_0=10^3,10^4,\ldots,10^{15}M_\odot$，保存
+`fig9_reproduction.png` 和唯一一份对应的 `fig9_reproduction.csv`。CSV 保留
+$z=0$，图上的对数横轴只绘制 49 个正红移点，直至 $z=12$。
+
+以 $M_0=10^{12}M_\odot$ 为人工锚点，当前公开公式实现给出
+
+$$
+z_{-2}=3.183657,\qquad \alpha=0.223113,\qquad \beta=-0.717076,
+$$
+
+$$
+C(0)=8.71031,\qquad
+R_{\rm vir}(0)=210.72\ {\rm kpc},\qquad
+R_s(0)=24.19\ {\rm kpc}.
+$$
+
+$R_{\rm vir}(0)$ 与论文 Table I 所列约 $211$ kpc 一致；同时
+$C(0)R_s(0)=R_{\rm vir}(0)$。沿单条轨迹回溯时 $M(z)$ 总体下降，并且所有输出
+保持正值。
+
+### 8.3 阶段结论与复现边界
+
+9月9日要求的 Appendix C 参数、$M(z)$、Fig. 9，以及
+$M\rightarrow C\rightarrow R_{\rm vir}\rightarrow R_s$ 数据流已经实现并实际运行。
+因此本阶段在“论文公开公式与可复用代码”层面完成。
+
+但不能把它表述成 Fig. 9 的逐点精确复现：第 7.4.1 节已经证明，原图高质量端
+反求出的 $\alpha,\beta$ 与当前宇宙学下的印刷公式 C1--C3 不能同时一致。代码保留
+公开公式，不采用逐红移排序或未经来源确认的高质量参数去强行贴图。该差异作为
+明确的复现误差边界保留，等待作者代码或进一步来源证据。

@@ -6,7 +6,7 @@
 当前阶段完成三件事：
 
 1. 为 Fig. 9 的一组现今晕质量计算 M(z)；
-2. 使用该数据矩阵绘制并保存 Fig. 9。
+2. 使用该数据矩阵绘制并保存 Fig. 9；
 3. 计算同一批晕的 C(z)、R_vir(z) 与 R_s(z)。
 
 这里没有自动自检、断言或测试模块。
@@ -89,31 +89,57 @@ def calculate_mass_accretion_tracks(
 
 
 def make_figure9(output_directory):
-    """使用质量吸积轨迹矩阵绘制并保存论文 Fig. 9。"""
+    """使用质量吸积轨迹矩阵绘制并保存论文 Fig. 9 及对应数据。"""
     output_directory = Path(output_directory)
-    z = np.geomspace(0.1, 12.0, 400)
+
+    # 原图的矢量路径包含 z=0 加上 49 个等间距的正红移点，范围到 z=12。
+    # z=0 对确认 M(0)=M0 很重要，因此保留在 CSV 中；但 log(0) 不存在，
+    # 所以绘图时只使用 positive_redshift 选出的 49 个正红移点。
+    z = np.linspace(0.0, 12.0, 50)
     mass_tracks_msun = calculate_mass_accretion_tracks(z)
+    positive_redshift = z > 0.0
 
     figure, axis = plt.subplots(figsize=(7.0, 4.8))
     line_styles = ("-", "--", "-.", ":")
     for index, mass0_msun in enumerate(FIG9_PRESENT_DAY_MASSES_MSUN):
         exponent = int(np.log10(mass0_msun))
         axis.plot(
-            z,
-            mass_tracks_msun[index],
+            z[positive_redshift],
+            mass_tracks_msun[index, positive_redshift],
             linestyle=line_styles[index % len(line_styles)],
             label=rf"$M=10^{{{exponent}}}M_\odot$",
         )
 
     axis.set_xscale("log")
     axis.set_yscale("log")
-    axis.set_xlim(0.1, 12.0)
+    axis.set_xlim(z[1], 12.0)
+    axis.set_ylim(1.0e1, 2.0e15)
+    axis.set_yticks(10.0 ** np.arange(3.0, 16.0, 3.0))
     axis.set_xlabel(r"Redshift $z$")
     axis.set_ylabel(r"$M(z)\;[M_\odot]$")
-    axis.legend(loc="upper right", fontsize="small")
+    axis.legend(
+        loc="upper right",
+        fontsize=6.5,
+        handlelength=2.7,
+        labelspacing=0.25,
+    )
     figure.tight_layout()
     figure.savefig(output_directory / "fig9_reproduction.png", dpi=220)
     plt.close(figure)
+
+    # CSV 的第一列是 z，后面 13 列依次对应 M0=10^3--10^15 M_sun。
+    # 转置 mass_tracks_msun 后，每一行才会对应同一个红移，便于逐行读取。
+    mass_columns = [
+        f"mass_M0_{mass0_msun:.0e}_msun"
+        for mass0_msun in FIG9_PRESENT_DAY_MASSES_MSUN
+    ]
+    np.savetxt(
+        output_directory / "fig9_reproduction.csv",
+        np.column_stack((z, mass_tracks_msun.T)),
+        delimiter=",",
+        header=",".join(["z", *mass_columns]),
+        comments="",
+    )
     return z, mass_tracks_msun
 
 
@@ -137,15 +163,24 @@ def calculate_halo_structure_tracks(
     )
 
     cosmology = hc.LUDLOW_COSMOLOGY
+
+    # H0=100 h km/s/Mpc。因为 1 Mpc=1000 kpc，所以换成 km/s/kpc 后
+    # H0=0.1 h；再乘 E(z) 得到同一红移的 H(z)。
     hubble_km_s_kpc = 0.1 * cosmology["h"] * np.sqrt(
         cosmology["omega_m0"] * (1.0 + redshift_grid) ** 3
         + cosmology["omega_lambda0"]
     )
+
+    # 临界密度 rho_crit(z)=3 H(z)^2/(8 pi G)。当前 H 和 G 的单位组合
+    # 会让 rho_crit 直接得到 M_sun/kpc^3，不需要额外长度或质量换算。
     critical_density_msun_kpc3 = (
         3.0
         * hubble_km_s_kpc**2
         / (8.0 * np.pi * GRAVITATIONAL_CONSTANT_KPC_KM2_S2_MSUN)
     )
+
+    # M_200c=(4 pi/3)*200*rho_crit*R_vir^3，反解得到 R_vir；
+    # 浓度定义 C=R_vir/R_s，因此 R_s=R_vir/C。
     virial_radius_kpc = np.cbrt(
         3.0
         * mass_tracks_msun
@@ -162,9 +197,10 @@ def calculate_halo_structure_tracks(
 
 
 def main():
-    """生成 Fig. 9。"""
+    """生成 Fig. 9 及其曲线数据。"""
     make_figure9(Path(__file__).resolve().parent)
     print("Created fig9_reproduction.png")
+    print("Created fig9_reproduction.csv")
 
 
 if __name__ == "__main__":
