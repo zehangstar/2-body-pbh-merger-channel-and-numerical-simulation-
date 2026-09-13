@@ -30,9 +30,7 @@ FIG9_PRESENT_DAY_MASSES_MSUN = np.logspace(3.0, 15.0, 13)
 
 
 def calculate_mass_accretion_tracks(
-    z,
-    present_day_masses_msun=FIG9_PRESENT_DAY_MASSES_MSUN,
-    preserve_mass_rank=False,
+    z, present_day_masses_msun=FIG9_PRESENT_DAY_MASSES_MSUN
 ):
     """计算 Fig. 9 中不同现今质量晕的平均质量吸积轨迹。
 
@@ -42,10 +40,6 @@ def calculate_mass_accretion_tracks(
         需要回溯的红移。z=0 表示今天；z 越大，表示回溯到越早的宇宙。
     present_day_masses_msun : array-like
         每条轨迹在 z=0 时的晕质量 M0，单位统一为太阳质量 M_sun。
-    preserve_mass_rank : bool
-        若为 True，在每个红移按 M0 的质量秩重新排列 Eq. (31) 的结果，使较大
-        M0 对应的代表性晕质量不小于较小 M0。该操作是 Fig. 9 的族群秩序约束，
-        不是 Ludlow16 或 Correa15 原始公式；False 返回未经处理的公式轨迹。
 
     Returns
     -------
@@ -72,28 +66,27 @@ def calculate_mass_accretion_tracks(
         np.asarray(present_day_masses_msun, dtype=float)
     )
 
-    mass_tracks_msun = hc.mass_accretion_history(
-        present_day_masses_msun[:, None], z[None, :], model="ludlow16"
-    )
-    if not preserve_mass_rank:
-        return mass_tracks_msun
+    # 每次循环只处理一个现今质量 M0。这样写比一次性广播更直观：
+    # 先根据 M0 求该晕专属的 z_-2、alpha、beta，再计算所有 z 上的 M(z)。
+    mass_tracks_msun = []
+    for mass0_msun in present_day_masses_msun:
+        mass_at_z_msun = hc.mass_accretion_history(
+            mass0_msun,
+            z,
+            model="ludlow16",
+        )
+        mass_tracks_msun.append(mass_at_z_msun)
 
-    # 独立的中位 MAH 公式在高质量、高红移外推区会发生秩交换。Fig. 9 若解释为
-    # 按现今质量排序的代表性晕族群，应在每个红移保留该质量秩；原始值仍可通过
-    # preserve_mass_rank=False 完整取得。
-    mass_order = np.argsort(present_day_masses_msun)
-    ordered_tracks = np.empty_like(mass_tracks_msun)
-    ordered_tracks[mass_order] = np.sort(mass_tracks_msun, axis=0)
-    return ordered_tracks
+    # 列表中的每个元素原本是一条一维轨迹；转换后得到二维矩阵，
+    # 方便下一阶段直接逐行绘制 Fig. 9，也方便继续计算 C、R_vir 和 R_s。
+    return np.asarray(mass_tracks_msun)
 
 
 def make_figure9(output_directory):
     """使用质量吸积轨迹矩阵绘制并保存论文 Fig. 9。"""
     output_directory = Path(output_directory)
     z = np.geomspace(0.1, 12.0, 400)
-    mass_tracks_msun = calculate_mass_accretion_tracks(
-        z, preserve_mass_rank=True
-    )
+    mass_tracks_msun = calculate_mass_accretion_tracks(z)
 
     figure, axis = plt.subplots(figsize=(7.0, 4.8))
     line_styles = ("-", "--", "-.", ":")
@@ -113,7 +106,7 @@ def make_figure9(output_directory):
     axis.set_ylabel(r"$M(z)\;[M_\odot]$")
     axis.legend(loc="upper right", fontsize="small")
     figure.tight_layout()
-    figure.savefig(output_directory / "fig9_reproduction(1).png", dpi=220)
+    figure.savefig(output_directory / "fig9_reproduction.png", dpi=220)
     plt.close(figure)
     return z, mass_tracks_msun
 
@@ -124,7 +117,7 @@ def make_figure9(output_directory):
 def main():
     """生成 Fig. 9。"""
     make_figure9(Path(__file__).resolve().parent)
-    print("Created fig9_reproduction(1).png")
+    print("Created fig9_reproduction.png")
 
 
 if __name__ == "__main__":

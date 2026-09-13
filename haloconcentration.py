@@ -1,7 +1,31 @@
-"""Ludlow16、Prada12 浓度关系和 Correa15 质量吸积史。
+"""复现 Aljaf & Cholis (2025) 的 Fig. 1 和 Fig. 2。
 
-公开质量统一使用物理太阳质量 M_sun。Ludlow16 的高红移连续延拓和
-Prada12 的高峰高分支截断均在对应函数中显式标注；它们不是原拟合公式的一部分。
+学习约定
+--------
+这个文件最初采用逐函数填空的学习方式。为了在 2026-09-20 前完成论文的
+全流程精读与分层复现，从本版本开始改为“模块交付 + 逐段精讲”：函数保持
+短小、注释解释公式和单位，同时每个阶段直接形成能够生成论文图像的程序。
+
+当前版本包括：
+1. Ludlow16 Appendix C 的浓度拟合；
+2. Prada12 Eqs. (12)--(23) 的浓度拟合；
+3. PBH 论文 Appendix C 的平均质量吸积史；
+4. Fig. 1 和 Fig. 2 的绘制及曲线数据导出。
+
+公开接口中的 halo mass 一律使用物理太阳质量 M_sun。原始拟合公式若用
+h^-1 M_sun，会在函数内部显式转换，避免单位被悄悄混用。
+
+给 Python 初学者的阅读提示
+-------------------------
+1. ``def function_name(...):`` 表示定义函数，括号内是函数的输入。
+2. ``return result`` 表示把计算结果交还给调用函数的位置。没有 return 的函数
+   默认返回 None，后面的物理计算便无法继续。
+3. Python 用 ``**`` 表示乘方。例如 ``x**3`` 是 x 的三次方，不要写 ``x^3``；
+   在 Python 中 ``^`` 是按位异或，不是数学乘方。
+4. NumPy 数组可以一次计算许多红移。例如 ``1.0 + z`` 在 z 是数组时会对每个
+   元素分别加 1，因此这里不需要写 for 循环。
+5. 所有公开质量输入均为物理质量 M_sun；变量名带 ``_msun`` 是单位提醒。
+6. 本文件不设置独立的自检函数或 assert；数值结果通过输出表和论文图像人工核对。
 """
 
 from __future__ import annotations
@@ -9,6 +33,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import matplotlib
+
+# 当前环境没有可用的 Tk 图形界面。Agg 后端直接把图写入 PNG，不弹出窗口，
+# 也不会改变任何物理计算。
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from scipy.integrate import quad
 
 
 # Ludlow16 Appendix C 所用 Planck cosmology。
@@ -29,19 +60,28 @@ PRADA_COSMOLOGY = {
 
 # 球对称 top-hat 坍缩的线性临界密度。Ludlow16 Appendix C 取 1.686。
 DELTA_SC = 1.686
-LUDLOW_CONTINUATION_REDSHIFT = 6.0
-PRADA_REFERENCE_X = 1.393
-CORREA_A_PLANCK = 798.0
 
 # 本轮按照用户要求保留旧结果，并在新输出文件名末尾添加 (1)。
 OUTPUT_TAG = "(1)"
 
 
 def scale_factor(z):
-    """把红移 z 转换为尺度因子 a=1/(1+z)。"""
+    """把红移 z 转换为尺度因子 a=1/(1+z)。
+
+    这是本阶段的完整示范函数。np.asarray 使函数可以同时接受一个数和数组。
+    """
+    # np.asarray 会把输入统一转换成 NumPy 浮点数组：
+    #   scale_factor(1.0)                 可以接受单个数；
+    #   scale_factor([0.0, 1.0, 2.0])     也可以接受一列数。
+    # 后面的同一条公式会自动应用到每一个数组元素，这叫“向量化”。
     z = np.asarray(z, dtype=float)
+
+    # np.any(condition) 检查数组中是否至少有一个元素满足 condition。
+    # 这里主动拒绝负红移，能让输入错误尽早暴露，而不是产生难以理解的结果。
     if np.any(z < 0.0):
         raise ValueError("本次复现只使用 z >= 0。")
+
+    # 注意：1.0 而不是 1 只是为了直观强调我们希望得到浮点数结果。
     return 1.0 / (1.0 + z)
 
 
@@ -57,6 +97,9 @@ def mass_to_hinv_msun_value(mass_msun, h):
     if h <= 0.0:
         raise ValueError("h 必须为正。")
 
+    # 这里返回的只是“以 h^-1 M_sun 为单位时的数值”，不是给数组附加物理单位。
+    # 例如 h=0.678 时：
+    #   1.0e12 M_sun = 6.78e11 h^-1 M_sun。
     return h * mass_msun
 
 
@@ -222,7 +265,7 @@ def ludlow_nu0(z):
     若研究原始拟合，请直接调用 ``ludlow_nu0_published``。
     """
     z = np.asarray(z, dtype=float)
-    pivot_redshift = LUDLOW_CONTINUATION_REDSHIFT
+    pivot_redshift = 6.0
     published_value = ludlow_nu0_published(np.minimum(z, pivot_redshift))
     continuation = ludlow_nu0_published(pivot_redshift) * (
         (1.0 + z) / (1.0 + pivot_redshift)
@@ -287,8 +330,6 @@ def growth_factor_prada12(z):
     ``quad`` 一次积分一个 x。下面先把任意形状数组拉平成一列，逐个积分后再
     恢复原形状，所以函数同时支持单个红移和红移数组。
     """
-    from scipy.integrate import quad
-
     x = np.asarray(prada_time_variable(z), dtype=float)
 
     def integrate_to_x(x_value):
@@ -356,14 +397,12 @@ def prada_inverse_sigma_min(x):
 
 def prada_b0(x):
     """Prada12 Eq.18 的纵向重标度 B0(x)。"""
-    return prada_c_min(x) / prada_c_min(PRADA_REFERENCE_X)
+    return prada_c_min(x) / prada_c_min(1.393)
 
 
 def prada_b1(x):
     """Prada12 Eq.18 的横向重标度 B1(x)。"""
-    return prada_inverse_sigma_min(x) / prada_inverse_sigma_min(
-        PRADA_REFERENCE_X
-    )
+    return prada_inverse_sigma_min(x) / prada_inverse_sigma_min(1.393)
 
 
 def prada_universal_concentration(sigma_prime):
@@ -394,11 +433,12 @@ def concentration_prada12(mass_msun, z, cap_high_peak=False):
     if not cap_high_peak:
         return raw_concentration
 
-    # PBH 论文的额外分支限制：若 sigma^{-1} 越过该红移 x 对应的最低点，
-    # 不沿 Prada12 原始 U 形高峰高分支上翘，而固定为同一红移的 c_min(x)。
-    high_peak_branch = 1.0 / sigma > prada_inverse_sigma_min(x)
+    # 1.393 是参考时间变量 x_ref，不是最低点的 sigma^{-1}。
+    # B1 的定义使各红移的最低点映射到
+    # sigma'_min = 1 / sigma_min^{-1}(x_ref)。
+    sigma_prime_at_minimum = 1.0 / prada_inverse_sigma_min(1.393)
     return np.where(
-        high_peak_branch,
+        sigma_prime < sigma_prime_at_minimum,
         prada_c_min(x),
         raw_concentration,
     )
@@ -427,28 +467,31 @@ def concentration_model(mass_msun, z, model, cap_prada=True):
     raise ValueError("model 必须是 'ludlow16' 或 'prada12'。")
 
 
-def mass_accretion_parameters(mass0_msun, model="ludlow16"):
+def mass_accretion_parameters(mass0_msun, model):
     """由今天的质量 M0 求 Appendix C 的 z_-2、alpha 和 beta。
 
     注意这里的 alpha、beta 是质量吸积史参数，不是 Ludlow16 浓度公式中的
-    gamma1 和 transition_beta。PBH 论文指定 Ludlow16、Planck 宇宙学和
-    A_cosmo=798；Prada12 只用于后续 C[M(z),z] 的模型比较。
-
-    各 M0 的公式给出独立的中位轨迹；在高质量、高红移外推区，它本身不保证
-    不同 M0 的轨迹保持质量秩。秩序约束只在 ``halohistory.py`` 的 Fig. 9
-    表示层显式施加，不能混入这里冒充 Correa15 公式。
+    gamma1 和 transition_beta。A_cosmo=798 是 PBH 论文给出的常数。
     """
-    if model.lower() != "ludlow16":
-        raise ValueError("PBH Appendix C 的质量吸积史固定使用 'ludlow16'。")
+    if model.lower() == "ludlow16":
+        cosmology = LUDLOW_COSMOLOGY
+    elif model.lower() == "prada12":
+        cosmology = PRADA_COSMOLOGY
+    else:
+        raise ValueError("model 必须是 'ludlow16' 或 'prada12'。")
 
-    concentration0 = concentration_ludlow16(mass0_msun, 0.0)
-    omega_m0 = LUDLOW_COSMOLOGY["omega_m0"]
-    omega_lambda0 = LUDLOW_COSMOLOGY["omega_lambda0"]
+    concentration0 = concentration_model(
+        mass0_msun, 0.0, model, cap_prada=False
+    )
+    omega_m0 = cosmology["omega_m0"]
+    omega_lambda0 = cosmology["omega_lambda0"]
+    a_cosmo = 798.0
+
     cube = (
         200.0
         * concentration0**3
         * nfw_g(1.0)
-        / (CORREA_A_PLANCK * omega_m0 * nfw_g(concentration0))
+        / (a_cosmo * omega_m0 * nfw_g(concentration0))
         - omega_lambda0 / omega_m0
     )
     z_minus2 = np.cbrt(cube) - 1.0
@@ -461,7 +504,7 @@ def mass_accretion_parameters(mass0_msun, model="ludlow16"):
     return z_minus2, alpha_mah, beta_mah
 
 
-def mass_accretion_history(mass0_msun, z, model="ludlow16"):
+def mass_accretion_history(mass0_msun, z, model):
     """计算平均主晕质量 M(z)=M0(1+z)^alpha exp(beta*z)。"""
     z = np.asarray(z, dtype=float)
     _, alpha_mah, beta_mah = mass_accretion_parameters(mass0_msun, model)
@@ -477,19 +520,8 @@ FIGURE_MASSES_MSUN = np.array([1.0e3, 1.0e6, 1.0e9, 1.0e12])
 FIGURE_LINESTYLES = ["-", "--", "-.", ":"]
 
 
-def _pyplot():
-    """仅在实际绘图时载入 Matplotlib，计算模块导入时不承担其开销。"""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    return plt
-
-
 def make_figure1(output_directory):
     """生成论文 Fig.1：今天为 1e12 M_sun 晕的质量和浓度演化。"""
-    plt = _pyplot()
     output_directory = Path(output_directory)
     z = np.geomspace(0.1, 12.0, 400)
     mass = mass_accretion_history(1.0e12, z, "ludlow16")
@@ -534,22 +566,22 @@ def make_figure1(output_directory):
 
 def figure2_model_data(z, model):
     """返回 Fig.2 某个浓度模型的四条质量轨迹和浓度轨迹。"""
-    z = np.atleast_1d(np.asarray(z, dtype=float))
-    mass_tracks = mass_accretion_history(
-        FIGURE_MASSES_MSUN[:, None], z[None, :]
-    )
-    concentration_tracks = concentration_model(
-        mass_tracks,
-        z[None, :],
-        model,
-        cap_prada=(model.lower() == "prada12"),
-    )
-    return mass_tracks, concentration_tracks
+    mass_tracks = []
+    concentration_tracks = []
+
+    for mass0_msun in FIGURE_MASSES_MSUN:
+        mass = mass_accretion_history(mass0_msun, z, model)
+        concentration = concentration_model(
+            mass, z, model, cap_prada=(model.lower() == "prada12")
+        )
+        mass_tracks.append(mass)
+        concentration_tracks.append(concentration)
+
+    return np.asarray(mass_tracks), np.asarray(concentration_tracks)
 
 
 def make_figure2(output_directory):
     """生成论文 Fig.2：Ludlow16 与 Prada12 的浓度演化比较。"""
-    plt = _pyplot()
     output_directory = Path(output_directory)
     z = np.linspace(0.0, 12.0, 401)
     ludlow_mass, ludlow_concentration = figure2_model_data(z, "ludlow16")
