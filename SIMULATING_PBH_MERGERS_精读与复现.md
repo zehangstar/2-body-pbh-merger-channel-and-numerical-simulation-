@@ -182,7 +182,7 @@ $$
 F(e)=\frac{1+73e^2/24+37e^4/96}{(1-e^2)^{7/2}},
 $$
 $$
-\dot e=\frac{GHK\rho_{\rm env}}{v_{\rm disp}}a^{-1}-
+\dot e=\frac{GHK\rho_{\rm env}}{v_{\rm disp}}a-
 \frac{304G^3(m_1+m_2)m_1m_2}{15c^5a^4}D(e),
 \quad D(e)=\frac{e+121e^3/304}{(1-e^2)^{5/2}}.
 $$

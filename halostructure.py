@@ -4,8 +4,8 @@
 
     (M, C, z) -> (R_vir, R_s, rho_s) -> rho_NFW(r) -> M(<r)
 
-当前模块实现 NFW 特征密度、密度剖面、内部质量、特征速度和论文采用的
-截断 Maxwell 速率分布；两体捕获率将在后续阶段加入。
+当前模块实现 NFW 特征密度、密度剖面、内部质量、特征速度和 Bird et al.
+采用的截断 Maxwell 三维速度密度；两体捕获率将在后续阶段加入。
 
 这里没有自动自检、断言或独立测试模块。
 """
@@ -167,14 +167,14 @@ def virial_cutoff_velocity(halo_mass_msun, virial_radius_kpc):
     )
 
 
-def truncated_maxwell_speed_pdf(
+def truncated_maxwell_velocity_density(
     speed_km_s, velocity_dispersion_km_s, cutoff_velocity_km_s
 ):
-    """返回归一化的 lowered-Maxwell 速率 PDF，单位为 (km/s)^-1。
+    """返回 Bird et al. Eq. (7) 的三维各向同性速度密度。
 
-    分布在 ``0 <= speed <= cutoff_velocity`` 上正比于
-    ``speed**2 * (exp(-speed**2 / dispersion**2)
-    - exp(-cutoff**2 / dispersion**2))``，在区间外为零。
+    返回值的单位为 ``(km/s)^-3``，并满足
+    ``4*pi*integral(P(v)*v**2*dv) = 1``。因此这里的 ``P(v)`` 本身
+    不含速度空间球壳因子 ``v**2``；该因子应在后续速度积分的测度中加入。
     """
     speed_km_s = np.asarray(speed_km_s, dtype=float)
     velocity_dispersion_km_s = np.asarray(
@@ -187,16 +187,17 @@ def truncated_maxwell_speed_pdf(
         raise ValueError("velocity dispersion 和 cutoff velocity 必须为正。")
 
     q = cutoff_velocity_km_s / velocity_dispersion_km_s
-    normalization = velocity_dispersion_km_s**3 * (
+    radial_integral = velocity_dispersion_km_s**3 * (
         0.25 * np.sqrt(np.pi) * erf(q)
         - np.exp(-(q**2)) * (0.5 * q + q**3 / 3.0)
     )
-    profile = speed_km_s**2 * (
+    normalization_coefficient = 1.0 / (4.0 * np.pi * radial_integral)
+    profile = (
         np.exp(-(speed_km_s / velocity_dispersion_km_s) ** 2)
         - np.exp(-(q**2))
     )
     return np.where(
         (speed_km_s >= 0.0) & (speed_km_s <= cutoff_velocity_km_s),
-        profile / normalization,
+        normalization_coefficient * profile,
         0.0,
     )
