@@ -3,22 +3,19 @@
 这个文件对应 9 月 9 日的学习任务。它不重复实现 Ludlow16 浓度公式，
 而是导入 ``haloconcentration.py`` 中已经完成并核对过的函数。
 
-当前阶段完成三件事：
+当前阶段提供两层可复用计算：
 
 1. 为 Fig. 9 的一组现今晕质量计算 M(z)；
-2. 使用该数据矩阵绘制并保存 Fig. 9；
-3. 计算同一批晕的 C(z)、R_vir(z) 与 R_s(z)。
+2. 计算同一批晕的 C(z)、R_vir(z) 与 R_s(z)。
+
+Fig. 9 的具体红移网格、绘图和 CSV 导出放在
+``notebooks/fig09_mass_accretion_history.ipynb``，避免让主体物理模块承担
+某一幅图专用的展示逻辑。
 
 这里没有自动自检、断言或测试模块。
 """
 
-from pathlib import Path
-
 import numpy as np
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 import haloconcentration as hc
 
@@ -26,7 +23,7 @@ import haloconcentration as hc
 # Fig. 9 展示的“现今质量”范围是 10^3--10^15 M_sun。
 # np.logspace(3, 15, 13) 会依次生成 10^3、10^4、...、10^15，
 # 因而一共对应论文图例中的 13 条质量吸积轨迹。
-FIG9_PRESENT_DAY_MASSES_MSUN = np.logspace(3.0, 15.0, 13)
+PRESENT_DAY_MASSES_MSUN = np.logspace(3.0, 15.0, 13)
 
 # G 的单位写成 kpc (km/s)^2 M_sun^-1，使下面算出的半径直接以 kpc 表示。
 GRAVITATIONAL_CONSTANT_KPC_KM2_S2_MSUN = 4.30091e-6
@@ -34,9 +31,9 @@ VIRIAL_OVERDENSITY = 200.0
 
 
 def calculate_mass_accretion_tracks(
-    z, present_day_masses_msun=FIG9_PRESENT_DAY_MASSES_MSUN
+    z, present_day_masses_msun=PRESENT_DAY_MASSES_MSUN
 ):
-    """计算 Fig. 9 中不同现今质量晕的平均质量吸积轨迹。
+    """计算中不同现今质量晕的平均质量吸积轨迹。
 
     Parameters
     ----------
@@ -88,63 +85,8 @@ def calculate_mass_accretion_tracks(
     )
 
 
-def make_figure9(output_directory):
-    """使用质量吸积轨迹矩阵绘制并保存论文 Fig. 9 及对应数据。"""
-    output_directory = Path(output_directory)
-
-    # 原图的矢量路径包含 z=0 加上 49 个等间距的正红移点，范围到 z=12。
-    # z=0 对确认 M(0)=M0 很重要，因此保留在 CSV 中；但 log(0) 不存在，
-    # 所以绘图时只使用 positive_redshift 选出的 49 个正红移点。
-    z = np.linspace(0.0, 12.0, 50)
-    mass_tracks_msun = calculate_mass_accretion_tracks(z)
-    positive_redshift = z > 0.0
-
-    figure, axis = plt.subplots(figsize=(7.0, 4.8))
-    line_styles = ("-", "--", "-.", ":")
-    for index, mass0_msun in enumerate(FIG9_PRESENT_DAY_MASSES_MSUN):
-        exponent = int(np.log10(mass0_msun))
-        axis.plot(
-            z[positive_redshift],
-            mass_tracks_msun[index, positive_redshift],
-            linestyle=line_styles[index % len(line_styles)],
-            label=rf"$M=10^{{{exponent}}}M_\odot$",
-        )
-
-    axis.set_xscale("log")
-    axis.set_yscale("log")
-    axis.set_xlim(z[1], 12.0)
-    axis.set_ylim(1.0e1, 2.0e15)
-    axis.set_yticks(10.0 ** np.arange(3.0, 16.0, 3.0))
-    axis.set_xlabel(r"Redshift $z$")
-    axis.set_ylabel(r"$M(z)\;[M_\odot]$")
-    axis.legend(
-        loc="upper right",
-        fontsize=6.5,
-        handlelength=2.7,
-        labelspacing=0.25,
-    )
-    figure.tight_layout()
-    figure.savefig(output_directory / "fig9_reproduction.png", dpi=220)
-    plt.close(figure)
-
-    # CSV 的第一列是 z，后面 13 列依次对应 M0=10^3--10^15 M_sun。
-    # 转置 mass_tracks_msun 后，每一行才会对应同一个红移，便于逐行读取。
-    mass_columns = [
-        f"mass_M0_{mass0_msun:.0e}_msun"
-        for mass0_msun in FIG9_PRESENT_DAY_MASSES_MSUN
-    ]
-    np.savetxt(
-        output_directory / "fig9_reproduction.csv",
-        np.column_stack((z, mass_tracks_msun.T)),
-        delimiter=",",
-        header=",".join(["z", *mass_columns]),
-        comments="",
-    )
-    return z, mass_tracks_msun
-
-
 def calculate_halo_structure_tracks(
-    z, present_day_masses_msun=FIG9_PRESENT_DAY_MASSES_MSUN
+    z, present_day_masses_msun=PRESENT_DAY_MASSES_MSUN
 ):
     """计算 ``M(z) -> C(z) -> R_vir(z) -> R_s(z)`` 的完整数据流。
 
@@ -194,14 +136,3 @@ def calculate_halo_structure_tracks(
         virial_radius_kpc,
         scale_radius_kpc,
     )
-
-
-def main():
-    """生成 Fig. 9 及其曲线数据。"""
-    make_figure9(Path(__file__).resolve().parent)
-    print("Created fig9_reproduction.png")
-    print("Created fig9_reproduction.csv")
-
-
-if __name__ == "__main__":
-    main()

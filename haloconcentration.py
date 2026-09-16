@@ -1,4 +1,4 @@
-"""复现 Aljaf & Cholis (2025) 的 Fig. 1 和 Fig. 2。
+"""暗物质晕浓度模型与平均质量吸积史。
 
 学习约定
 --------
@@ -6,11 +6,14 @@
 全流程精读与分层复现，从本版本开始改为“模块交付 + 逐段精讲”：函数保持
 短小、注释解释公式和单位，同时每个阶段直接形成能够生成论文图像的程序。
 
-当前版本包括：
+当前版本提供：
 1. Ludlow16 Appendix C 的浓度拟合；
 2. Prada12 Eqs. (12)--(23) 的浓度拟合；
-3. PBH 论文 Appendix C 的平均质量吸积史；
-4. Fig. 1 和 Fig. 2 的绘制及曲线数据导出。
+3. PBH 论文 Appendix C 的平均质量吸积史。
+
+Fig. 1 和 Fig. 2 的具体质量、红移网格、数据组织、绘图与导出分别放在
+``notebooks/fig01_halo_mass_concentration_history.ipynb`` 和
+``notebooks/fig02_concentration_model_comparison.ipynb``。
 
 公开接口中的 halo mass 一律使用物理太阳质量 M_sun。原始拟合公式若用
 h^-1 M_sun，会在函数内部显式转换，避免单位被悄悄混用。
@@ -30,15 +33,7 @@ h^-1 M_sun，会在函数内部显式转换，避免单位被悄悄混用。
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
-import matplotlib
-
-# 当前环境没有可用的 Tk 图形界面。Agg 后端直接把图写入 PNG，不弹出窗口，
-# 也不会改变任何物理计算。
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from scipy.integrate import quad
 
 
@@ -60,10 +55,6 @@ PRADA_COSMOLOGY = {
 
 # 球对称 top-hat 坍缩的线性临界密度。Ludlow16 Appendix C 取 1.686。
 DELTA_SC = 1.686
-
-# 本轮按照用户要求保留旧结果，并在新输出文件名末尾添加 (1)。
-OUTPUT_TAG = "(1)"
-
 
 def scale_factor(z):
     """把红移 z 转换为尺度因子 a=1/(1+z)。
@@ -518,175 +509,3 @@ def mass_accretion_history(mass0_msun, z, model):
     z = np.asarray(z, dtype=float)
     _, alpha_mah, beta_mah = mass_accretion_parameters(mass0_msun, model)
     return mass0_msun * (1.0 + z) ** alpha_mah * np.exp(beta_mah * z)
-
-
-# -----------------------------------------------------------------------------
-# Fig.1--2 的数据与绘图。数据函数和画图函数分开，方便后续直接复用曲线。
-# -----------------------------------------------------------------------------
-
-
-FIGURE_MASSES_MSUN = np.array([1.0e3, 1.0e6, 1.0e9, 1.0e12])
-FIGURE_LINESTYLES = ["-", "--", "-.", ":"]
-
-
-def make_figure1(output_directory):
-    """生成论文 Fig.1：今天为 1e12 M_sun 晕的质量和浓度演化。"""
-    output_directory = Path(output_directory)
-    z = np.geomspace(0.1, 12.0, 400)
-    mass = mass_accretion_history(1.0e12, z, "ludlow16")
-    concentration = concentration_ludlow16(mass, z)
-
-    figure, concentration_axis = plt.subplots(figsize=(7.0, 4.8))
-    mass_axis = concentration_axis.twinx()
-
-    concentration_axis.plot(
-        z, concentration, color="tab:blue", linestyle="--", label=r"$C(z)$"
-    )
-    mass_axis.plot(z, mass, color="tab:red", label=r"$M(z)$")
-
-    concentration_axis.set_xscale("log")
-    mass_axis.set_yscale("log")
-    concentration_axis.set_xlim(0.1, 12.0)
-    concentration_axis.set_xlabel(r"Redshift $z$")
-    concentration_axis.set_ylabel(r"Concentration $C$", color="tab:blue")
-    mass_axis.set_ylabel(r"$M(z)\;[M_\odot]$", color="tab:red")
-    concentration_axis.tick_params(axis="y", colors="tab:blue")
-    mass_axis.tick_params(axis="y", colors="tab:red")
-
-    lines = concentration_axis.lines + mass_axis.lines
-    labels = [line.get_label() for line in lines]
-    concentration_axis.legend(lines, labels, loc="upper right")
-    figure.tight_layout()
-    figure.savefig(
-        output_directory / f"fig1_reproduction{OUTPUT_TAG}.png", dpi=220
-    )
-    plt.close(figure)
-
-    data = np.column_stack((z, mass, concentration))
-    np.savetxt(
-        output_directory / f"fig1_reproduction{OUTPUT_TAG}.csv",
-        data,
-        delimiter=",",
-        header="z,mass_msun,concentration_ludlow16",
-        comments="",
-    )
-    return z, mass, concentration
-
-
-def figure2_model_data(z, model):
-    """返回 Fig.2 某个浓度模型的四条质量轨迹和浓度轨迹。"""
-    mass_tracks = []
-    concentration_tracks = []
-
-    for mass0_msun in FIGURE_MASSES_MSUN:
-        mass = mass_accretion_history(mass0_msun, z, model)
-        concentration = concentration_model(
-            mass, z, model, cap_prada=(model.lower() == "prada12")
-        )
-        mass_tracks.append(mass)
-        concentration_tracks.append(concentration)
-
-    return np.asarray(mass_tracks), np.asarray(concentration_tracks)
-
-
-def make_figure2(output_directory):
-    """生成论文 Fig.2：Ludlow16 与 Prada12 的浓度演化比较。"""
-    output_directory = Path(output_directory)
-    z = np.linspace(0.0, 12.0, 401)
-    ludlow_mass, ludlow_concentration = figure2_model_data(z, "ludlow16")
-    prada_mass, prada_concentration = figure2_model_data(z, "prada12")
-
-    figure, axes = plt.subplots(
-        2, 1, figsize=(7.2, 8.0), sharex=True, constrained_layout=True
-    )
-
-    for index, mass0_msun in enumerate(FIGURE_MASSES_MSUN):
-        label = rf"$M_0=10^{{{int(np.log10(mass0_msun))}}}\,M_\odot$"
-        axes[0].plot(
-            z,
-            ludlow_concentration[index],
-            linestyle=FIGURE_LINESTYLES[index],
-            label=label,
-        )
-        axes[1].plot(
-            z,
-            prada_concentration[index],
-            linestyle=FIGURE_LINESTYLES[index],
-            label=label,
-        )
-
-    axes[0].set_title("Ludlow16")
-    axes[1].set_title("Prada12 — high-peak upturn capped")
-    axes[0].set_ylim(2.5, 26.0)
-    axes[1].set_ylim(3.0, 32.0)
-    for axis in axes:
-        axis.set_xlim(0.0, 12.0)
-        axis.set_ylabel(r"Concentration $C$")
-        axis.legend(loc="upper right")
-    axes[1].set_xlabel(r"Redshift $z$")
-
-    figure.savefig(
-        output_directory / f"fig2_reproduction{OUTPUT_TAG}.png", dpi=220
-    )
-    plt.close(figure)
-
-    ludlow_table = np.column_stack((z, ludlow_mass.T, ludlow_concentration.T))
-    prada_table = np.column_stack((z, prada_mass.T, prada_concentration.T))
-    mass_columns = [f"mass_track_M0_{mass:.0e}_msun" for mass in FIGURE_MASSES_MSUN]
-    concentration_columns = [
-        f"concentration_M0_{mass:.0e}" for mass in FIGURE_MASSES_MSUN
-    ]
-    header = ",".join(["z", *mass_columns, *concentration_columns])
-    np.savetxt(
-        output_directory / f"fig2_ludlow16{OUTPUT_TAG}.csv",
-        ludlow_table,
-        delimiter=",",
-        header=header,
-        comments="",
-    )
-    np.savetxt(
-        output_directory / f"fig2_prada12{OUTPUT_TAG}.csv",
-        prada_table,
-        delimiter=",",
-        header=header,
-        comments="",
-    )
-    return z, ludlow_concentration, prada_concentration
-
-
-def print_key_values():
-    """打印少量用于人工对照论文图像的关键数值，不执行自动判定。"""
-    print("\nKey values for manual comparison")
-    print("--------------------------------")
-    print(f"Ludlow nu0(z=0)       = {float(ludlow_nu0(0.0)):.6f}")
-    print(f"Prada x(z=0)          = {float(prada_time_variable(0.0)):.6f}")
-    print(f"Prada D(z=0), normalized = {float(growth_factor_prada12(0.0)):.6f}")
-
-    for model in ("ludlow16", "prada12"):
-        concentrations = concentration_model(
-            FIGURE_MASSES_MSUN,
-            0.0,
-            model,
-            cap_prada=(model == "prada12"),
-        )
-        print(f"{model:9s} C(M0,z=0)  = {concentrations}")
-
-
-def main():
-    """生成今天阶段的两张图、三份曲线数据和人工对照数值。"""
-    output_directory = Path(__file__).resolve().parent
-    make_figure1(output_directory)
-    make_figure2(output_directory)
-    print_key_values()
-    print(
-        f"\nCreated fig1_reproduction{OUTPUT_TAG}.png "
-        f"and fig2_reproduction{OUTPUT_TAG}.png"
-    )
-    print(
-        f"Created fig1_reproduction{OUTPUT_TAG}.csv, "
-        f"fig2_ludlow16{OUTPUT_TAG}.csv, "
-        f"fig2_prada12{OUTPUT_TAG}.csv"
-    )
-
-if __name__ == "__main__":
-    main()
