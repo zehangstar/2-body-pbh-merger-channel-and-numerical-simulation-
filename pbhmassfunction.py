@@ -6,7 +6,8 @@
 
 当前实现论文 Appendix B2 的截断对数正态分布、Appendix B3 的 broken power-law、
 Appendix B4 的 critical-collapse 分布，以及可由同一个 Appendix A14 积分器调用的
-单色分布。Fig. 18 将在后续小步中加入。
+单色分布。Fig. 18 的具体参数、绘图和数据导出放在
+``notebooks/fig18_pbh_mass_functions.ipynb``。
 
 这里没有自动自检、断言或独立测试模块。
 """
