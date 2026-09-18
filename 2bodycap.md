@@ -637,3 +637,125 @@ comoving_capture_rate_with_history_gpc3_per_year
 
 这个结果已经足以说明旧 Fig. 8 为什么失败、哪些模块是正确的、哪些近似需要
 更换，以及今后应如何在“物理计算”和“论文图像复现”之间选择正确的接口。
+
+---
+
+## 15. 四条曲线统一采用新 Prada12 吸积史的 Fig. 8 实验
+
+### 15.1 目的与文件
+
+为了单独观察质量吸积史选择对 Fig. 8 的影响，新建：
+
+```text
+notebooks/2bodycaptotalnew.ipynb
+```
+
+这不是论文原始 Fig. 8 设置的逐点复刻，而是一项受控的模型替换实验：四条曲线
+使用完全相同的新 Prada12 质量吸积史，只在计算每晕捕获率时切换浓度模型和 PBH
+质量分布。
+
+输出文件为：
+
+```text
+fig8_all_new_prada_history.csv
+fig8_all_new_prada_history.png
+```
+
+### 15.2 50 条晕轨迹及统一吸积史
+
+今天的晕质量在
+
+\[
+10^3M_\odot\leq M_0\leq10^{15}M_\odot
+\]
+
+之间取 50 个对数等距节点。对四条曲线都调用：
+
+```python
+hc.mass_accretion_history(
+    mass0_msun,
+    z,
+    model="prada12_hmf_sigma",
+)
+```
+
+因此每一个 \(M_0\) 的计算链都是
+
+\[
+M_0
+\longrightarrow C_{\mathrm{Prada,HMF}}(M_0,0)
+\longrightarrow (z_{-2},\alpha,\beta)
+\longrightarrow M(z;M_0).
+\]
+
+这里的 `prada12_hmf_sigma` 使用 WMAP5/HMF 线性功率谱求
+\(\sigma(M,z)\)，再代入 Prada12 Eqs. (12)--(22)，不是 Eq. (23) 的闭式
+\(\sigma(M)\) 近似。
+
+总率函数会把曲线所用的浓度模型名称传给质量吸积史回调。新 Notebook 中的回调
+故意忽略该名称，并始终使用 `prada12_hmf_sigma`，从程序结构上保证两条 Ludlow16
+曲线也不会切回 Ludlow16 吸积史。
+
+例如在 \(z=6\) 时，50 条轨迹中首末两个 \(M_0\) 节点对应：
+
+\[
+M(z=6;10^3M_\odot)=2.811076\times10^2M_\odot,
+\]
+
+\[
+M(z=6;10^{15}M_\odot)=2.573487\times10^{12}M_\odot.
+\]
+
+### 15.3 吸积史与浓度模型的职责分离
+
+四条曲线的具体设置为：
+
+| 曲线 | PBH 质量分布 | 四条曲线共用的吸积史 | 每晕率使用的浓度 |
+|---|---|---|---|
+| Ludlow16 + mono. | \(30M_\odot\) 单色 | 新 Prada12 | Ludlow16 |
+| Ludlow16 + log-normal | 对数正态 | 新 Prada12 | Ludlow16 |
+| new Prada12 + mono. | \(30M_\odot\) 单色 | 新 Prada12 | `prada12_hmf_sigma` |
+| new Prada12 + log-normal | 对数正态 | 新 Prada12 | `prada12_hmf_sigma` |
+
+也就是说，`new_prada12_mass_history` 只决定
+\(M_0\rightarrow M(z;M_0)\)；得到当前晕质量后，
+`comoving_capture_rate_with_history_gpc3_per_year` 再按当前曲线的
+`concentration_model` 计算 \(C[M(z),z]\)、NFW 结构和每晕捕获率。
+
+为了让这一选择在调用处明确可见，`twobodycapture.py` 的相关接口现在显式接受：
+
+```python
+concentration_model="prada12_hmf_sigma"
+```
+
+旧的 `concentration_model="prada12"` 调用仍然保留兼容性。
+
+### 15.4 实际运行结果
+
+Notebook 完整运行耗时约 12.9 s。总共动并合率的端点为：
+
+| 曲线 | \(R(z=0)\) | \(R(z=12)\) |
+|---|---:|---:|
+| Ludlow16 浓度 + 单色 | 0.9104 | 97.0681 |
+| Ludlow16 浓度 + 对数正态 | 1.0335 | 110.1893 |
+| 新 Prada12 浓度 + 单色 | 1.3469 | 118.9694 |
+| 新 Prada12 浓度 + 对数正态 | 1.5290 | 135.0510 |
+
+率的单位均为
+\(\mathrm{Gpc}^{-3}\,\mathrm{yr}^{-1}\)。完整的 \(z=0,1,\ldots,12\)
+数据保存在 `fig8_all_new_prada_history.csv`。
+
+在 \(z=0\) 时有 \(M(z=0)=M_0\)，因此更换吸积史不会改变四条曲线原有的
+\(z=0\) 端点。向高红移回溯后，新 Prada12 吸积轨迹开始改变实际晕质量和 HMF
+配对，差异才逐渐累积。到 \(z=12\)，四条曲线由低到高依次为 Ludlow16 单色、
+Ludlow16 对数正态、新 Prada12 单色和新 Prada12 对数正态。
+
+### 15.5 解释边界
+
+这组结果回答的是：在固定 Fig. 8 总率积分流程的情况下，如果所有曲线改用同一套
+新 Prada12 吸积史，而每晕率仍使用图例对应的浓度模型，结果如何变化。
+
+它不能直接用来宣称论文作者原本采用了新 Prada12 吸积史，因为论文没有给出这种
+四条曲线共用吸积史的设置。比较原论文图时仍应使用
+`notebooks/2bodycaptot.ipynb`；研究这一统一吸积史假设时使用
+`notebooks/2bodycaptotalnew.ipynb`。
