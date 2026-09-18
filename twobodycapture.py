@@ -1,8 +1,9 @@
 """暗物质晕中的 PBH 两体引力波捕获。
 
-本模块实现目标论文 Eq. (11) 的捕获截面、速度平均 ``<Sigma v>``，以及
-Appendix A14 对任意 PBH 质量分布的每晕捕获率。单色和连续质量谱使用同一个
-每晕率函数，区别只在传入的质量积分节点和权重。
+本模块实现目标论文 Eq. (11) 的捕获截面、速度平均 ``<Sigma v>``、
+Appendix A14 对任意 PBH 质量分布的每晕捕获率，以及 Eq. (18) 对晕质量函数
+积分得到的总共动捕获率。单色和连续质量谱使用同一个每晕率函数，区别只在
+传入的质量积分节点和权重。
 
 速度分布沿用 ``halostructure.py`` 中归一化的三维各向同性密度 ``f_3(v)``：
 
@@ -13,6 +14,8 @@ Appendix A14 对任意 PBH 质量分布的每晕捕获率。单色和连续质�
 """
 
 import numpy as np
+from astropy.cosmology import Planck18
+from hmf import MassFunction
 from scipy.integrate import quad
 
 import haloconcentration as hc
@@ -23,6 +26,14 @@ SPEED_OF_LIGHT_KM_S = 299792.458
 SECONDS_PER_YEAR = 365.25 * 24.0 * 3600.0
 KILOMETERS_PER_KPC = 3.0856775814913673e16
 KM_S_TO_KPC_PER_YEAR = SECONDS_PER_YEAR / KILOMETERS_PER_KPC
+
+# 论文只说明晕质量函数由 HMFcalc 计算，并未列出 HMFcalc 的完整配置。
+# HMFcalc 是网页工具；这里安装并导入的 ``hmf`` 是它实际使用的 Python 后端。
+# 为避免结果随包的默认值变化，先把本阶段采用的 Planck18 功率谱参数明确写出。
+# 这些数值是当前 hmf 3.6.3 的 Planck18 默认值，后续若找到作者配置应在此替换。
+HMF_SIGMA_8 = 0.8159
+HMF_SPECTRAL_INDEX = 0.9667
+MPC3_PER_GPC3 = 1.0e9
 
 
 def gw_capture_cross_section_kpc2(
@@ -249,3 +260,153 @@ def capture_rate_per_halo_a14_per_year(
         * density_squared_volume_integral
         * mass_averaged_pair_coefficient
     )
+
+
+def press_schechter_halo_mass_function_hmfcalc(
+    z,
+    minimum_halo_mass_msun=1.0e3,
+    maximum_halo_mass_msun=1.0e15,
+    dlog10m=0.1,
+):
+    """用 HMFcalc 的 ``hmf`` 后端计算 Press-Schechter 晕质量函数。
+
+    论文 Eq. (18) 需要 ``dn/dM``，但跨越许多个数量级时，更适合使用与它
+    完全等价的对数形式
+
+        (dn/dM) dM = (dn/dlnM) dlnM.
+
+    因此本函数返回两个一维数组：
+
+    ``halo_masses_msun``
+        晕的物理质量 M，单位 M_sun。
+
+    ``dndlnm_mpc3``
+        每单位 ``ln(M)`` 的共动晕数密度，单位 Mpc^-3。
+
+    ``hmf`` 内部的质量坐标是 ``M_sun/h``，``dndlnm`` 的原始单位是
+    ``h^3 Mpc^-3``。下面分别除以 ``h`` 和乘以 ``h^3``，把公开接口统一为
+    物理 ``M_sun`` 与 ``Mpc^-3``。自然对数在乘以常数 ``h`` 前后微分相同，
+    即 ``dln(M/h)=dln(M)``，所以不再产生额外 Jacobian。
+
+    注意：论文没有给出作者使用的完整 HMFcalc 配置。本阶段明确采用
+    Planck18、CAMB 转移函数、Press-Schechter 拟合、``delta_c=1.686``，以及
+    模块顶部列出的 ``sigma_8`` 和谱指数。这里是可追踪的复现假设，不应被
+    误认为论文已经逐项确认的参数。
+    """
+    z = float(z)
+    minimum_halo_mass_msun = float(minimum_halo_mass_msun)
+    maximum_halo_mass_msun = float(maximum_halo_mass_msun)
+    dlog10m = float(dlog10m)
+
+    if z < 0.0:
+        raise ValueError("红移 z 不能为负。")
+    if minimum_halo_mass_msun <= 0.0:
+        raise ValueError("最小晕质量必须为正。")
+    if maximum_halo_mass_msun <= minimum_halo_mass_msun:
+        raise ValueError("最大晕质量必须大于最小晕质量。")
+    if dlog10m <= 0.0:
+        raise ValueError("dlog10m 必须为正。")
+
+    hubble_h = float(Planck18.h)
+
+    # MassFunction 的 Mmin/Mmax 是 log10(M/[M_sun/h])。
+    # Mmax 再增加半个步长，使目标上边界能够进入 hmf 的左闭右开质量网格。
+    mass_function = MassFunction(
+        Mmin=np.log10(minimum_halo_mass_msun * hubble_h),
+        Mmax=(
+            np.log10(maximum_halo_mass_msun * hubble_h)
+            + 0.5 * dlog10m
+        ),
+        dlog10m=dlog10m,
+        z=z,
+        hmf_model="PS",
+        delta_c=1.686,
+        cosmo_model=Planck18,
+        sigma_8=HMF_SIGMA_8,
+        n=HMF_SPECTRAL_INDEX,
+        transfer_model="CAMB",
+        transfer_params={"extrapolate_with_eh": True},
+    )
+
+    halo_masses_msun = np.asarray(mass_function.m, dtype=float) / hubble_h
+    dndlnm_mpc3 = (
+        np.asarray(mass_function.dndlnm, dtype=float) * hubble_h**3
+    )
+
+    # 浮点运算有时会把理论上的 10^3 写成 999.9999999999999，因此边界筛选
+    # 留出极小的相对容差；这不是物理参数调整。
+    boundary_tolerance = 1.0e-12
+    inside_requested_range = (
+        halo_masses_msun
+        >= minimum_halo_mass_msun * (1.0 - boundary_tolerance)
+    ) & (
+        halo_masses_msun
+        <= maximum_halo_mass_msun * (1.0 + boundary_tolerance)
+    )
+
+    return (
+        halo_masses_msun[inside_requested_range],
+        dndlnm_mpc3[inside_requested_range],
+    )
+
+
+def comoving_capture_rate_eq18_gpc3_per_year(
+    z,
+    mass_nodes_msun,
+    mass_probability_weights,
+    concentration_model="ludlow16",
+    f_pbh=1.0,
+    minimum_halo_mass_msun=1.0e3,
+    maximum_halo_mass_msun=1.0e15,
+    dlog10m=0.1,
+):
+    """计算论文 Eq. (18) 的总共动两体捕获率。
+
+    论文写成
+
+        R(z) = integral R_halo(M,z) * (dn/dM) dM.
+
+    本函数用等价的对数质量形式计算：
+
+        R(z) = integral R_halo(M,z) * (dn/dlnM) dlnM.
+
+    ``R_halo`` 由 :func:`capture_rate_per_halo_a14_per_year` 计算，晕质量函数
+    则由 :func:`press_schechter_halo_mass_function_hmfcalc` 调用 HMFcalc 的
+    ``hmf`` 后端得到。最后把 ``Mpc^-3 yr^-1`` 乘以 ``10^9``，返回常用于
+    引力波事件率的 ``Gpc^-3 yr^-1``。
+
+    ``mass_nodes_msun`` 与 ``mass_probability_weights`` 的含义和 Appendix A14
+    每晕率函数完全相同，所以单色质量函数传一个节点和权重 1，连续质量函数
+    则传入数值积分节点和 ``psi(m)dm`` 权重。
+    """
+    halo_masses_msun, dndlnm_mpc3 = (
+        press_schechter_halo_mass_function_hmfcalc(
+            z,
+            minimum_halo_mass_msun=minimum_halo_mass_msun,
+            maximum_halo_mass_msun=maximum_halo_mass_msun,
+            dlog10m=dlog10m,
+        )
+    )
+
+    # 这里的每个 M 都表示红移 z 时实际存在的晕质量，直接代入 R_halo(M,z)。
+    # 不再把它当作今天的 M0 后额外调用质量吸积史，否则会重复演化质量。
+    rates_per_halo_per_year = np.asarray(
+        [
+            capture_rate_per_halo_a14_per_year(
+                halo_mass_msun,
+                z,
+                mass_nodes_msun,
+                mass_probability_weights,
+                concentration_model=concentration_model,
+                f_pbh=f_pbh,
+            )
+            for halo_mass_msun in halo_masses_msun
+        ],
+        dtype=float,
+    )
+
+    rate_density_mpc3_per_year = np.trapezoid(
+        rates_per_halo_per_year * dndlnm_mpc3,
+        x=np.log(halo_masses_msun),
+    )
+    return float(rate_density_mpc3_per_year * MPC3_PER_GPC3)
