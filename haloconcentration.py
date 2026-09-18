@@ -8,7 +8,8 @@
 
 当前版本提供：
 1. Ludlow16 Appendix C 的浓度拟合；
-2. Prada12 Eqs. (12)--(23) 的浓度拟合；
+2. Prada12 Eq. (23) 闭式近似，以及用 WMAP5 功率谱实现 Eqs. (12)--(22)
+   的浓度计算；
 3. PBH 论文 Appendix C 的平均质量吸积史。
 
 Fig. 1 和 Fig. 2 的具体质量、红移网格、数据组织、绘图与导出分别放在
@@ -34,6 +35,8 @@ h^-1 M_sun，会在函数内部显式转换，避免单位被悄悄混用。
 from __future__ import annotations
 
 import numpy as np
+from astropy.cosmology import WMAP5
+from hmf import MassFunction
 from scipy.integrate import quad
 
 
@@ -52,6 +55,11 @@ PRADA_COSMOLOGY = {
     "omega_lambda0": 0.73,
     "h": 0.70,
 }
+
+# 用 Prada12 Eqs. (12)--(22) 直接计算浓度时，需要由 WMAP5 线性功率谱得到
+# sigma(M,z)。下面是 Bolshoi/MultiDark 所采用的归一化和原初谱指数。
+PRADA_HMF_SIGMA_8 = 0.817
+PRADA_HMF_SPECTRAL_INDEX = 0.962
 
 # 球对称 top-hat 坍缩的线性临界密度。Ludlow16 Appendix C 取 1.686。
 DELTA_SC = 1.686
@@ -369,6 +377,75 @@ def sigma_prada12(mass_msun, z):
     return growth * numerator / denominator
 
 
+def linear_sigma_hmfcalc_wmap5(mass_msun, z, dlog10m=0.02):
+    """用 ``hmf`` 的 WMAP5 线性功率谱计算 ``sigma(M,z)``。
+
+    ``MassFunction.sigma`` 与所选的 halo mass-function 拟合式无关；这里借用
+    同一个后端完成功率谱、top-hat 滤波和线性增长。公开质量输入为物理
+    ``M_sun``，进入 ``hmf`` 前乘以 ``h``，转换成其 ``M_sun/h`` 数值。
+
+    这个函数服务于 Prada12 Eqs. (12)--(22)。本文件中的
+    :func:`sigma_prada12` 是 Eq. (23) 的闭式近似，两条路径同时保留。
+    """
+    mass_msun, z = np.broadcast_arrays(
+        np.asarray(mass_msun, dtype=float),
+        np.asarray(z, dtype=float),
+    )
+    dlog10m = float(dlog10m)
+
+    if np.any(mass_msun <= 0.0):
+        raise ValueError("计算 sigma 的 halo mass 必须为正。")
+    if np.any(z < 0.0):
+        raise ValueError("红移 z 不能为负。")
+    if dlog10m <= 0.0:
+        raise ValueError("dlog10m 必须为正。")
+
+    hubble_h = float(WMAP5.h)
+    minimum_mass_hinv = float(np.min(mass_msun)) * hubble_h
+    maximum_mass_hinv = float(np.max(mass_msun)) * hubble_h
+
+    # 在所需质量区间两端各多留 0.1 dex，使后面的对数插值不会落在边界外。
+    sigma_calculator = MassFunction(
+        Mmin=np.log10(minimum_mass_hinv) - 0.1,
+        Mmax=np.log10(maximum_mass_hinv) + 0.1,
+        dlog10m=dlog10m,
+        z=0.0,
+        hmf_model="PS",
+        delta_c=DELTA_SC,
+        cosmo_model=WMAP5,
+        sigma_8=PRADA_HMF_SIGMA_8,
+        n=PRADA_HMF_SPECTRAL_INDEX,
+        transfer_model="CAMB",
+        transfer_params={"extrapolate_with_eh": True},
+    )
+
+    physical_mass_grid = np.asarray(sigma_calculator.m, dtype=float) / hubble_h
+    sigma0_grid = np.asarray(sigma_calculator.sigma, dtype=float)
+    sigma0 = np.exp(
+        np.interp(
+            np.log(mass_msun),
+            np.log(physical_mass_grid),
+            np.log(sigma0_grid),
+        )
+    )
+    # hmf 的增长因子接口在数组输入的 z=0 端点会经过样条插值，产生约 1e-4
+    # 的端点误差。逐个标量调用只涉及已建好的增长样条，不会重新计算功率谱，
+    # 同时与原先“每次传入一个红移”的结果保持一致。
+    growth = np.asarray(
+        [
+            float(
+                np.asarray(
+                    sigma_calculator.growth.growth_factor(float(z_value)),
+                    dtype=float,
+                ).ravel()[0]
+            )
+            for z_value in z.ravel()
+        ],
+        dtype=float,
+    ).reshape(z.shape)
+    return sigma0 * growth
+
+
 def prada_c_min(x):
     """Prada12 Eq.19：给定时间变量 x 时 U 形曲线的最小浓度。"""
     x = np.asarray(x, dtype=float)
@@ -436,6 +513,40 @@ def concentration_prada12(mass_msun, z, cap_high_peak=False):
     )
 
 
+def concentration_prada12_hmf_sigma(
+    mass_msun,
+    z,
+    cap_high_peak=True,
+):
+    """用 WMAP5 功率谱的 ``sigma(M,z)`` 计算 Prada12 浓度。
+
+    组合公式仍是 Prada12 Eqs. (14)--(22)；与
+    :func:`concentration_prada12` 的区别只在于这里不使用 Eq. (23) 的
+    ``sigma`` 闭式近似。PBH 论文的率计算限制 Prada 高峰高上翘分支，所以
+    ``cap_high_peak`` 默认开启。
+    """
+    mass_msun, z = np.broadcast_arrays(
+        np.asarray(mass_msun, dtype=float),
+        np.asarray(z, dtype=float),
+    )
+    sigma = linear_sigma_hmfcalc_wmap5(mass_msun, z)
+    x = prada_time_variable(z)
+    sigma_prime = prada_b1(x) * sigma
+    raw_concentration = prada_b0(x) * prada_universal_concentration(
+        sigma_prime
+    )
+
+    if not cap_high_peak:
+        return raw_concentration
+
+    sigma_prime_at_minimum = 1.0 / prada_inverse_sigma_min(1.393)
+    return np.where(
+        sigma_prime < sigma_prime_at_minimum,
+        prada_c_min(x),
+        raw_concentration,
+    )
+
+
 # -----------------------------------------------------------------------------
 # PBH 论文 Appendix C：用今天的质量和浓度建立平均质量吸积史。
 # -----------------------------------------------------------------------------
@@ -448,7 +559,7 @@ def nfw_g(concentration):
 
 
 def concentration_model(mass_msun, z, model, cap_prada=True):
-    """用统一入口选择 Ludlow16 或 Prada12 浓度模型。"""
+    """统一选择 Ludlow16、Prada12 闭式或 Prada12-HMF 浓度。"""
     model_name = model.lower()
     if model_name == "ludlow16":
         return concentration_ludlow16(mass_msun, z)
@@ -456,7 +567,16 @@ def concentration_model(mass_msun, z, model, cap_prada=True):
         return concentration_prada12(
             mass_msun, z, cap_high_peak=cap_prada
         )
-    raise ValueError("model 必须是 'ludlow16' 或 'prada12'。")
+    if model_name == "prada12_hmf_sigma":
+        return concentration_prada12_hmf_sigma(
+            mass_msun,
+            z,
+            cap_high_peak=cap_prada,
+        )
+    raise ValueError(
+        "model 必须是 'ludlow16'、'prada12' 或 "
+        "'prada12_hmf_sigma'。"
+    )
 
 
 def mass_accretion_parameters(mass0_msun, model):
@@ -475,10 +595,13 @@ def mass_accretion_parameters(mass0_msun, model):
     # SIMULATING_PBH_MERGERS_精读与复现.md 第 7.4.1 节。
     if model.lower() == "ludlow16":
         cosmology = LUDLOW_COSMOLOGY
-    elif model.lower() == "prada12":
+    elif model.lower() in {"prada12", "prada12_hmf_sigma"}:
         cosmology = PRADA_COSMOLOGY
     else:
-        raise ValueError("model 必须是 'ludlow16' 或 'prada12'。")
+        raise ValueError(
+            "model 必须是 'ludlow16'、'prada12' 或 "
+            "'prada12_hmf_sigma'。"
+        )
 
     concentration0 = concentration_model(
         mass0_msun, 0.0, model, cap_prada=False

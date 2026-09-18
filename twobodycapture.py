@@ -35,7 +35,6 @@ HMF_SIGMA_8 = 0.8159
 HMF_SPECTRAL_INDEX = 0.9667
 MPC3_PER_GPC3 = 1.0e9
 
-
 def gw_capture_cross_section_kpc2(
     mass1_msun,
     mass2_msun,
@@ -150,6 +149,7 @@ def capture_rate_per_halo_a14_per_year(
     mass_probability_weights,
     concentration_model="ludlow16",
     f_pbh=1.0,
+    concentration_override=None,
 ):
     """用 Appendix A14 计算任意 PBH 质量分布的每晕捕获率，单位 yr^-1。
 
@@ -163,6 +163,11 @@ def capture_rate_per_halo_a14_per_year(
     ``f_pbh`` 是参与直接捕获的有效 PBH 质量占暗物质的比例。论文基准在
     Eq. (12) 附近取总 PBH 丰度为 1；若只允许部分 PBH 参与，应显式传入相应值，
     结果按 ``f_pbh**2`` 缩放。
+
+    ``concentration_override`` 默认是 ``None``，此时函数按模型名自行计算
+    ``C(M,z)``。Fig. 8 的 Prada12 复现需要用 HMF 功率谱计算真实的
+    ``sigma(M,z)``，调用者可把已算好的浓度传入这里；NFW、速度分布和捕获率
+    的其余计算仍走同一条路径。
     """
     halo_mass_msun = float(halo_mass_msun)
     z = float(z)
@@ -187,19 +192,29 @@ def capture_rate_per_halo_a14_per_year(
     model_name = concentration_model.lower()
     if model_name == "ludlow16":
         cosmology = hc.LUDLOW_COSMOLOGY
-    elif model_name == "prada12":
+    elif model_name in {"prada12", "prada12_hmf_sigma"}:
         cosmology = hc.PRADA_COSMOLOGY
     else:
-        raise ValueError("concentration_model 必须是 'ludlow16' 或 'prada12'。")
-
-    concentration = float(
-        hc.concentration_model(
-            halo_mass_msun,
-            z,
-            model_name,
-            cap_prada=(model_name == "prada12"),
+        raise ValueError(
+            "concentration_model 必须是 'ludlow16'、'prada12' 或 "
+            "'prada12_hmf_sigma'。"
         )
-    )
+
+    if concentration_override is None:
+        concentration = float(
+            hc.concentration_model(
+                halo_mass_msun,
+                z,
+                model_name,
+                cap_prada=(
+                    model_name in {"prada12", "prada12_hmf_sigma"}
+                ),
+            )
+        )
+    else:
+        concentration = float(concentration_override)
+        if not np.isfinite(concentration) or concentration <= 0.0:
+            raise ValueError("外部传入的 concentration 必须是有限正数。")
     critical_density_msun_kpc3 = float(hs.rho_crit(z, cosmology))
     virial_radius_kpc = (
         3.0
@@ -348,6 +363,132 @@ def press_schechter_halo_mass_function_hmfcalc(
         halo_masses_msun[inside_requested_range],
         dndlnm_mpc3[inside_requested_range],
     )
+
+
+def comoving_capture_rate_with_history_gpc3_per_year(
+    z,
+    mass_nodes_msun,
+    mass_probability_weights,
+    mass_history_function,
+    concentration_model="ludlow16",
+    f_pbh=1.0,
+    minimum_present_halo_mass_msun=1.0e3,
+    maximum_present_halo_mass_msun=1.0e15,
+    halo_track_point_count=50,
+    hmf_dlog10m=0.05,
+):
+    """沿给定质量吸积史计算总共动捕获率。
+
+    ``mass_history_function`` 必须接受
+    ``(present_day_masses, z, concentration_model)``，并返回每个今天质量
+    ``M0`` 在红移 ``z`` 时对应的实际晕质量 ``M(z;M0)``。Fig. 8 专属的
+    吸积史数据和插值函数保存在绘图 Notebook，而不是本物理模块中。
+
+    原始矢量图的曲线可由以下过程重现到约 10%：
+
+    1. 在今天的质量 ``M0=10^3--10^15 M_sun`` 上取 50 个对数等距晕；
+    2. 沿各自质量吸积史得到非均匀的 ``M(z;M0)``，并计算每晕率；
+    3. 在 ``min[M(z)]--max[M(z)]`` 之间另建均匀对数 HMF 网格；
+    4. 按数组下标把每晕率与 HMF 值配对，再对 ``ln(M0)`` 积分。
+
+    第 3--4 步是从论文原始矢量数据反推的“作图数值约定”，论文正文没有公开
+    对应代码。它不同于严格地在每个实际 ``M(z;M0)`` 上评价 HMF，因此不能把
+    二者的差异解释成新的物理效应。保留现有
+    :func:`comoving_capture_rate_eq18_gpc3_per_year`，就是为了让严格的当前质量
+    积分与论文图复现不被混成同一个接口。
+    """
+    z = float(z)
+    minimum_present_halo_mass_msun = float(minimum_present_halo_mass_msun)
+    maximum_present_halo_mass_msun = float(maximum_present_halo_mass_msun)
+    halo_track_point_count = int(halo_track_point_count)
+
+    if z < 0.0:
+        raise ValueError("红移 z 不能为负。")
+    if minimum_present_halo_mass_msun <= 0.0:
+        raise ValueError("今天的最小晕质量必须为正。")
+    if maximum_present_halo_mass_msun <= minimum_present_halo_mass_msun:
+        raise ValueError("今天的最大晕质量必须大于最小晕质量。")
+    if halo_track_point_count < 2:
+        raise ValueError("halo_track_point_count 必须至少为 2。")
+
+    model_name = concentration_model.lower()
+    present_day_masses = np.geomspace(
+        minimum_present_halo_mass_msun,
+        maximum_present_halo_mass_msun,
+        halo_track_point_count,
+    )
+    track_masses = np.asarray(
+        mass_history_function(present_day_masses, z, model_name),
+        dtype=float,
+    )
+
+    if model_name in {"prada12", "prada12_hmf_sigma"}:
+        track_concentrations = np.asarray(
+            hc.concentration_prada12_hmf_sigma(
+                track_masses,
+                z,
+                cap_high_peak=True,
+            ),
+            dtype=float,
+        )
+    elif model_name == "ludlow16":
+        track_concentrations = np.full(track_masses.shape, np.nan)
+    else:
+        raise ValueError(
+            "concentration_model 必须是 'ludlow16'、'prada12' 或 "
+            "'prada12_hmf_sigma'。"
+        )
+
+    rates_per_halo = np.asarray(
+        [
+            capture_rate_per_halo_a14_per_year(
+                halo_mass_msun,
+                z,
+                mass_nodes_msun,
+                mass_probability_weights,
+                concentration_model=model_name,
+                f_pbh=f_pbh,
+                concentration_override=(
+                    concentration
+                    if model_name in {"prada12", "prada12_hmf_sigma"}
+                    else None
+                ),
+            )
+            for halo_mass_msun, concentration in zip(
+                track_masses,
+                track_concentrations,
+            )
+        ],
+        dtype=float,
+    )
+
+    # 这是从原始 Fig. 8 反推出来的关键：HMF 网格均匀覆盖 M(z) 的端点，
+    # 但它并不是逐点等于上面的非均匀 track_masses。
+    paired_hmf_masses = np.geomspace(
+        float(np.min(track_masses)),
+        float(np.max(track_masses)),
+        halo_track_point_count,
+    )
+    hmf_masses, dndlnm = press_schechter_halo_mass_function_hmfcalc(
+        z,
+        minimum_halo_mass_msun=float(np.min(track_masses)) * 0.8,
+        maximum_halo_mass_msun=float(np.max(track_masses)) * 1.2,
+        dlog10m=hmf_dlog10m,
+    )
+    finite_positive = (dndlnm > 0.0) & np.isfinite(dndlnm)
+    paired_dndlnm = np.exp(
+        np.interp(
+            np.log(paired_hmf_masses),
+            np.log(hmf_masses[finite_positive]),
+            np.log(dndlnm[finite_positive]),
+        )
+    )
+
+    rate_density_mpc3_per_year = np.trapezoid(
+        rates_per_halo * paired_dndlnm,
+        x=np.log(present_day_masses),
+    )
+    return float(rate_density_mpc3_per_year * MPC3_PER_GPC3)
 
 
 def comoving_capture_rate_eq18_gpc3_per_year(
