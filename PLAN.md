@@ -14,12 +14,9 @@
 
 ## 代码架构与公共接口
 
-建立 `pbh_mergers/` 模块包，由 `run_reproduction.py` 统一生成指定图像：
+建立 `pbh_mergers/` 模块包，创建ipynb文件统一生成指定图像，并将图像与数据文件保存至：D:\pbh formation\pbh merge\2body channel and numerical simulation\pic_and_data。
 
-```powershell
-python run_reproduction.py --fig all --mode quick
-python run_reproduction.py --fig 12-17 --mode reference
-```
+
 
 核心可替换接口：
 
