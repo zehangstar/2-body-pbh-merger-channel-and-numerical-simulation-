@@ -41,6 +41,19 @@ GRAVITATIONAL_CONSTANT_PC_KM2_S2_MSUN = 4.30091727003628e-3
 MEGAPARSEC_IN_PC = 1.0e6
 AU_PER_PC = 206264.80624709636
 
+# Fig. 19 的正文明确写了“先采样 j，再利用 P(a,j) 采样 a”，但没有说明
+# 第一步 Eq. (D3) 中 x/x_bar 的取值，也没有给出能够唯一确定横向尺度的
+# rho_eq 数值实现。下面两个量不是新的理论常数，而是从论文原始矢量图的
+# 上、下两个直方图反推的有效复现参数：
+#
+# * j_scale 控制先验 P(j) 的形状；
+# * a_scale = alpha*x_bar/f_PBH 控制 D4 中 a 的整体尺度。
+#
+# 把它们单独命名，可以防止 Fig. 19 的经验复现口径被误认为 D1--D5 在
+# Planck 默认宇宙学下的唯一预测。
+FIGURE19_EFFECTIVE_ANGULAR_MOMENTUM_SCALE = 1.088798521872047
+FIGURE19_EFFECTIVE_SEMIMAJOR_AXIS_SCALE_PC = 0.034694
+
 
 def critical_density_z0_msun_pc3(h=DEFAULT_H):
     """返回今天的临界密度，单位为 ``M_sun/pc^3``。
@@ -336,6 +349,141 @@ class OrbitalSamples:
     semi_major_axis_pc: np.ndarray
     angular_momentum: np.ndarray
     eccentricity: np.ndarray
+
+
+def sample_figure19_orbital_parameters(
+    sample_count,
+    rng,
+    sigma_eq=DEFAULT_SIGMA_EQ,
+    minimum_semi_major_axis_pc=1.0e-6,
+    maximum_semi_major_axis_pc=1.0,
+    angular_momentum_scale_for_sampling=(
+        FIGURE19_EFFECTIVE_ANGULAR_MOMENTUM_SCALE
+    ),
+    semi_major_axis_scale_pc=(
+        FIGURE19_EFFECTIVE_SEMIMAJOR_AXIS_SCALE_PC
+    ),
+):
+    """按照论文描述的先 ``j``、后 ``a`` 顺序复现 Fig. 19。
+
+    Appendix D 的文字说明与严格联合分布采样并不等价。作者写的是：
+
+    1. 先从 Eq. (D2) 的 ``P(j)`` 在 ``0<j<1`` 内采样；
+    2. 再对每个已经得到的 ``j``，从 Eq. (D4) 采样 ``a``。
+
+    第一步所需的 ``x/x_bar`` 没有在论文中公开，因此这里直接使用从
+    Fig. 19 下图反推的有效 ``j_scale``。D4 的半长轴尺度
+    ``alpha*x_bar/f_PBH`` 同样使用上图反推值。两者都作为显式参数保留，
+    调用者可以替换；它们不能被解释为 D1--D5 唯一推出的宇宙学参数。
+
+    给定 ``j`` 后，令
+
+    ``X=(x/x_bar)^3=(a/a_scale)^(3/4)``。
+
+    D4 对 ``X`` 的条件密度正比于
+
+    ``exp(-X) * P(j|X)``。
+
+    程序以截断指数分布 ``exp(-X)`` 为建议分布进行拒绝采样，因此不需要
+    建立二维逆 CDF。返回值仍是逐项对应的 ``(a,j,e)`` 样本。
+    """
+    sample_count = int(sample_count)
+    minimum_semi_major_axis_pc = float(minimum_semi_major_axis_pc)
+    maximum_semi_major_axis_pc = float(maximum_semi_major_axis_pc)
+    angular_momentum_scale_for_sampling = float(
+        angular_momentum_scale_for_sampling
+    )
+    semi_major_axis_scale_pc = float(semi_major_axis_scale_pc)
+    sigma_eq = float(sigma_eq)
+
+    if sample_count <= 0:
+        raise ValueError("sample_count 必须为正整数。")
+    if not isinstance(rng, np.random.Generator):
+        raise TypeError("rng 必须是 numpy.random.Generator。")
+    if minimum_semi_major_axis_pc <= 0.0:
+        raise ValueError("最小半长轴必须为正。")
+    if maximum_semi_major_axis_pc <= minimum_semi_major_axis_pc:
+        raise ValueError("最大半长轴必须大于最小半长轴。")
+    if angular_momentum_scale_for_sampling <= 0.0:
+        raise ValueError("angular_momentum_scale_for_sampling 必须为正。")
+    if semi_major_axis_scale_pc <= 0.0:
+        raise ValueError("semi_major_axis_scale_pc 必须为正。")
+    if sigma_eq < 0.0:
+        raise ValueError("sigma_eq 不能为负。")
+
+    # 第一步：按照 Eq. (D2) 的解析逆 CDF，在 0<j<1 内采样。
+    probability_below_one = angular_momentum_cdf(
+        1.0,
+        angular_momentum_scale_for_sampling,
+    )
+    target_cdf = rng.random(sample_count) * probability_below_one
+    y = np.sqrt((1.0 - target_cdf) ** (-2.0) - 1.0)
+    angular_momentum = angular_momentum_scale_for_sampling * y
+    angular_momentum = np.minimum(
+        angular_momentum,
+        np.nextafter(1.0, 0.0),
+    )
+
+    # 第二步：对每个已采到的 j，从 D4 的条件分布 P(a|j) 采样。
+    # 变量 X=(a/a_scale)^(3/4) 后，建议分布是有限区间上的 exp(-X)。
+    minimum_x = (
+        minimum_semi_major_axis_pc / semi_major_axis_scale_pc
+    ) ** 0.75
+    maximum_x = (
+        maximum_semi_major_axis_pc / semi_major_axis_scale_pc
+    ) ** 0.75
+    minimum_exponential_cdf = 1.0 - np.exp(-minimum_x)
+    maximum_exponential_cdf = 1.0 - np.exp(-maximum_x)
+
+    sampled_x = np.empty(sample_count, dtype=float)
+    pending_indices = np.arange(sample_count)
+
+    # 对固定 j，P(j|X) 中与 X 有关的部分为
+    # g(y)=y^2/(1+y^2)^(3/2)，其最大值是 2/(3*sqrt(3))。
+    # 因此 acceptance_probability=g(y)/g_max 始终位于 [0,1]。
+    maximum_shape_factor = 2.0 / (3.0 * np.sqrt(3.0))
+    scale_coefficient = 0.5 * np.sqrt(1.0 + sigma_eq**2)
+
+    while pending_indices.size > 0:
+        uniform_for_x = (
+            minimum_exponential_cdf
+            + rng.random(pending_indices.size)
+            * (
+                maximum_exponential_cdf
+                - minimum_exponential_cdf
+            )
+        )
+        proposed_x = -np.log1p(-uniform_for_x)
+
+        proposed_y = (
+            angular_momentum[pending_indices]
+            / (scale_coefficient * proposed_x)
+        )
+        shape_factor = (
+            proposed_y**2
+            / (1.0 + proposed_y**2) ** 1.5
+        )
+        acceptance_probability = shape_factor / maximum_shape_factor
+        accepted = (
+            rng.random(pending_indices.size)
+            < acceptance_probability
+        )
+
+        sampled_x[pending_indices[accepted]] = proposed_x[accepted]
+        pending_indices = pending_indices[~accepted]
+
+    semi_major_axis_pc = (
+        semi_major_axis_scale_pc * sampled_x ** (4.0 / 3.0)
+    )
+    eccentricity = eccentricity_from_angular_momentum(
+        angular_momentum
+    )
+
+    return OrbitalSamples(
+        semi_major_axis_pc=semi_major_axis_pc,
+        angular_momentum=angular_momentum,
+        eccentricity=eccentricity,
+    )
 
 
 def sample_initial_orbital_parameters(

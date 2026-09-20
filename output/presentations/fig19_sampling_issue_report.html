@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Appendix D 采样与 Fig. 19 复现问题</title>
+  <style>
+    :root {
+      --navy: #17324d;
+      --blue: #276c9b;
+      --red: #b83a3a;
+      --green: #2f7652;
+      --ink: #17212b;
+      --muted: #566675;
+      --paper: #f7f4ee;
+      --line: #c9d2d9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #20262d;
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+    }
+    .slide {
+      display: none;
+      position: relative;
+      width: min(100vw, 1280px);
+      aspect-ratio: 16 / 9;
+      margin: 0 auto;
+      padding: 54px 70px 48px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(39,108,155,.08), transparent 34%),
+        var(--paper);
+    }
+    .slide.active { display: block; }
+    h1 {
+      margin: 0 0 28px;
+      color: var(--navy);
+      font-size: 42px;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+    h2 {
+      margin: 0 0 14px;
+      color: var(--blue);
+      font-size: 27px;
+      line-height: 1.25;
+    }
+    p, li {
+      font-size: 24px;
+      line-height: 1.5;
+    }
+    ul, ol { margin: 10px 0 0 30px; padding: 0; }
+    li { margin: 8px 0; }
+    .cover {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-right: 180px;
+      background:
+        linear-gradient(115deg, rgba(23,50,77,.97) 0 56%, rgba(39,108,155,.86) 56% 72%, #e9e3d9 72%);
+      color: white;
+    }
+    .cover h1 { color: white; font-size: 54px; max-width: 850px; margin-bottom: 24px; }
+    .cover p { color: #e9f1f7; font-size: 27px; max-width: 790px; }
+    .cover .date { margin-top: 64px; font-size: 20px; color: #cbd9e4; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 46px; align-items: start; }
+    .two-col.wide-right { grid-template-columns: .85fr 1.15fr; }
+    .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin: 18px 0 28px; }
+    .metric { border-top: 5px solid var(--blue); padding-top: 14px; }
+    .metric strong { display: block; color: var(--navy); font-size: 35px; }
+    .metric span { display: block; color: var(--muted); font-size: 19px; margin-top: 6px; }
+    .callout {
+      margin-top: 22px;
+      padding: 17px 22px;
+      border-left: 7px solid var(--red);
+      background: rgba(184,58,58,.08);
+      font-size: 23px;
+      line-height: 1.45;
+    }
+    .good { border-left-color: var(--green); background: rgba(47,118,82,.08); }
+    .formula {
+      margin: 18px 0;
+      padding: 16px 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.72);
+      color: var(--navy);
+      font-family: Cambria, "Times New Roman", serif;
+      font-size: 28px;
+      text-align: center;
+    }
+    .sequence {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 34px;
+      margin-top: 18px;
+    }
+    .sequence article { padding: 18px 24px; border-top: 5px solid var(--green); background: rgba(255,255,255,.65); }
+    .sequence article:last-child { border-top-color: var(--red); }
+    .sequence p { font-size: 21px; }
+    .steps { counter-reset: step; list-style: none; margin-left: 0; }
+    .steps li { counter-increment: step; padding-left: 54px; position: relative; }
+    .steps li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 2px;
+      width: 36px; height: 36px; border-radius: 50%;
+      color: white; background: var(--blue);
+      text-align: center; line-height: 36px; font-weight: 700;
+    }
+    img.figure { width: 100%; max-height: 390px; object-fit: contain; background: white; border: 1px solid var(--line); }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 21px; background: rgba(255,255,255,.7); }
+    th, td { border-bottom: 1px solid var(--line); padding: 13px 14px; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: white; background: var(--navy); }
+    .footer {
+      position: absolute; left: 70px; right: 70px; bottom: 18px;
+      color: #6f7c86; font-size: 14px;
+    }
+    .page { position: absolute; right: 28px; bottom: 18px; color: #75838e; font-size: 15px; }
+    .small { font-size: 19px; color: var(--muted); }
+    @media print {
+      body { background: white; }
+      .slide { display: block; width: 1280px; height: 720px; page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+  <section class="slide cover active">
+    <h1>Appendix D 采样与 Fig. 19 复现问题</h1>
+    <p>联合分布、采样顺序、直方图范围与数值网格的技术审查</p>
+    <p class="date">导师汇报简版 · 2026-09-20</p>
+    <div class="page">1 / 7</div>
+  </section>
+
+  <section class="slide">
+    <h1>最初的数值差距</h1>
+    <div class="metric-row">
+      <div class="metric"><strong>2174 AU</strong><span>严格联合截断分支</span></div>
+      <div class="metric"><strong>7287 AU</strong><span>论文正文报告值</span></div>
+      <div class="metric"><strong>7299 AU</strong><span>顺序复现分支，固定种子</span></div>
+    </div>
+    <div class="two-col wide-right">
+      <div>
+        <ul>
+          <li>红色阶梯频数总和恰好为 100000。</li>
+          <li>差距来自采样定义，而不是绘图或样本数。</li>
+          <li>论文文字采用先采样 j、再采样 a 的顺序。</li>
+        </ul>
+      </div>
+      <img class="figure" src="fig19_assets/a-distribution.png" alt="论文 Fig. 19 半长轴矢量直方图">
+    </div>
+    <div class="footer">来源：Aljaf &amp; Cholis, Appendix D, Fig. 19；原始 a-distribution.pdf</div>
+    <div class="page">2 / 7</div>
+  </section>
+
+  <section class="slide">
+    <h1>采样范围与直方图范围</h1>
+    <div class="two-col">
+      <div>
+        <h2>允许的随机变量范围</h2>
+        <div class="formula">10<sup>-6</sup> &lt; a &lt; 1 pc</div>
+        <p>这是 Appendix D 对样本的截断条件。</p>
+      </div>
+      <div>
+        <h2>Fig. 19 的实际箱边界</h2>
+        <div class="formula">8.6×10<sup>-6</sup> &lt; a &lt; 0.4686 pc</div>
+        <p>这是有限样本的最小值和最大值，由矢量坐标反推。</p>
+      </div>
+    </div>
+    <div class="callout good">Matplotlib 的 hist(a, bins=50) 默认用当前样本范围分箱。图只画到 0.4686 pc，并不表示采样器禁止更大的 a。</div>
+    <p class="small">真实箱边界给出的箱中心均值约 7197 AU。论文的 7287 AU 来自未分箱原始样本，因此允许有小幅差异。</p>
+    <div class="page">3 / 7</div>
+  </section>
+
+  <section class="slide">
+    <h1>两种采样顺序回答不同问题</h1>
+    <div class="sequence">
+      <article>
+        <h2>严格联合分支</h2>
+        <div class="formula">P(a,j) = P(a) P(j | a)</div>
+        <ol class="steps">
+          <li>对 j 积分得到 P(a)</li>
+          <li>逆 CDF 采样 a</li>
+          <li>按 P(j | a) 采样 j</li>
+        </ol>
+        <p>数学上自洽，对应标准的边缘加条件采样。</p>
+      </article>
+      <article>
+        <h2>论文文字顺序</h2>
+        <div class="formula">P(a,j) = P(j) P(a | j)</div>
+        <ol class="steps">
+          <li>先从 D2 采样 j</li>
+          <li>再按 P(a | j) 采样 a</li>
+        </ol>
+        <p>D2 的尺度仍含 x/x̄，而此时 a 尚未确定。论文没有公开第一步所用的 x/x̄。</p>
+      </article>
+    </div>
+    <div class="footer">严格先 j 采样要求 P(j)=∫P(a,j)da；论文没有给出这一步。</div>
+    <div class="page">4 / 7</div>
+  </section>
+
+  <section class="slide">
+    <h1>限制 0 &lt; j &lt; 1 的逆 CDF</h1>
+    <div class="formula">F<sub>raw</sub>(j | j₀) = 1 − [1 + (j/j₀)²]<sup>−1/2</sup></div>
+    <ol class="steps">
+      <li>生成 u，且 u 在 0 到 1 之间均匀分布。</li>
+      <li>令 T = u F<sub>raw</sub>(1 | j₀)，只覆盖允许的原始 CDF 区间。</li>
+      <li>使用 j = j₀[(1−T)<sup>−2</sup>−1]<sup>1/2</sup> 得到样本。</li>
+    </ol>
+    <div class="callout">这一步严格保证 0 &lt; j &lt; 1，但不能单独保证联合分布正确。联合正确性还依赖第一步使用的 j₀ 或真正的边缘 P(j)。</div>
+    <div class="footer">Fig. 19 复现使用由偏心率矢量图反推的有效 j₀ ≈ 1.089。</div>
+    <div class="page">5 / 7</div>
+  </section>
+
+  <section class="slide">
+    <h1>对数 a 网格的必要性</h1>
+    <table>
+      <thead><tr><th>网格</th><th>归一化积分相对误差</th><th>样本均值相对误差</th></tr></thead>
+      <tbody>
+        <tr><td>16384 点对数网格</td><td>1.19×10<sup>−7</sup></td><td>3.56×10<sup>−7</sup></td></tr>
+        <tr><td>16384 点线性网格</td><td>1.13×10<sup>−2</sup></td><td>−1.11×10<sup>−2</sup></td></tr>
+        <tr><td>65536 点线性网格</td><td>1.73×10<sup>−3</sup></td><td>−1.72×10<sup>−3</sup></td></tr>
+      </tbody>
+    </table>
+    <div class="two-col" style="margin-top:22px">
+      <div>
+        <h2>线性网格的问题</h2>
+        <p>16384 点线性步长约 6.1×10<sup>−5</sup> pc，跳过大量小 a 结构。低分位数误差达到 13% 到 19%。</p>
+      </div>
+      <div>
+        <h2>审查结论</h2>
+        <p>保留对数网格。积分仍按真实 da 执行，没有把测度改成 d ln a。</p>
+      </div>
+    </div>
+    <div class="page">6 / 7</div>
+  </section>
+
+  <section class="slide">
+    <h1>当前代码边界与汇报结论</h1>
+    <div class="two-col">
+      <div>
+        <h2>理论问题</h2>
+        <ul>
+          <li>sample_initial_orbital_parameters 保留严格联合截断定义。</li>
+          <li>对数 a 网格继续保留。</li>
+        </ul>
+      </div>
+      <div>
+        <h2>论文复现问题</h2>
+        <ul>
+          <li>sample_figure19_orbital_parameters 按论文文字顺序采样。</li>
+          <li>有效尺度来自原始矢量图，不能当作新的理论常数。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout good">结论：原严格程序没有数值网格错误，但它与作者未完整公开的 Fig. 19 采样实现不是同一个概率模型。现在两个分支已明确分开。</div>
+    <p class="small">复现结果：固定种子均值 7298.88 AU；五个独立种子的均值平均 7290.92 AU，论文报告 7287 AU。</p>
+    <div class="footer">代码与推导说明：p_a_j.py；p(a,j)采样.md；counts.ipynb</div>
+    <div class="page">7 / 7</div>
+  </section>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const requestedSlide = Number(new URLSearchParams(location.search).get('slide'));
+    let index = Number.isInteger(requestedSlide) && requestedSlide >= 1
+      ? Math.min(slides.length - 1, requestedSlide - 1)
+      : 0;
+    function show(next) {
+      index = Math.max(0, Math.min(slides.length - 1, next));
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+    }
+    addEventListener('keydown', event => {
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) show(index + 1);
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) show(index - 1);
+      if (event.key === 'Home') show(0);
+      if (event.key === 'End') show(slides.length - 1);
+    });
+    show(index);
+  </script>
+</body>
+</html>

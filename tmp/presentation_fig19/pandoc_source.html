@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+
+<h1>附录 D：Fig. 19 采样复现问题</h1>
+<h2>严格联合分布、论文文字顺序与原图数据之间的差异</h2>
+<p>导师汇报简版｜PBH 双星初始轨道参数采样</p>
+<p><strong>核心结论：</strong>对数网格应保留；当前偏差的关键不是网格，而是论文对“先采样 j”步骤缺少完整的条件分布定义。</p>
+
+<hr>
+
+<h1>1. 最初发现：均值相差约 3.35 倍</h1>
+<table>
+  <thead><tr><th>结果来源</th><th>平均半长轴</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td>严格 D1–D5 联合采样</td><td>约 2174 AU</td><td>直接按当前附录公式实现</td></tr>
+    <tr><td>论文正文报告值</td><td>7287 AU</td><td>Fig. 19 附近的文字结果</td></tr>
+    <tr><td>原图矢量直方图反推</td><td>约 7197 AU</td><td>50 个柱的中点加权均值</td></tr>
+    <tr><td>当前经验复现分支</td><td>约 7299 AU</td><td>固定种子、10^5 个样本</td></tr>
+  </tbody>
+</table>
+<p><img src="fig19_assets/a-distribution.png" alt="论文 Fig. 19 半长轴分布" style="width:58%"></p>
+
+<hr>
+
+<h1>2. 采样区间与直方图显示区间不是一回事</h1>
+<ul>
+  <li>论文写的是在 <strong>10^-6 &lt; a/pc &lt; 1</strong> 内随机采样。</li>
+  <li>这规定了采样支持域，不要求直方图横轴固定显示整个区间。</li>
+  <li>原图矢量柱边界约为 <strong>8.6×10^-6–0.4686 pc</strong>，与样本自动范围一致。</li>
+  <li>自动范围只影响画图边界，不会改变样本，也不会改变样本均值。</li>
+</ul>
+<p><strong>因此：</strong>“原图没有画到 1 pc”不是造成均值偏差的原因。</p>
+
+<hr>
+
+<h1>3. 两种采样顺序并不自动等价</h1>
+<table>
+  <thead><tr><th>严格联合采样</th><th>论文文字顺序</th></tr></thead>
+  <tbody>
+    <tr><td>先求 P(a)，再采样 j|a</td><td>先采样 j，再采样 a|j</td></tr>
+    <tr><td>P(a)=∫P(a,j)dj</td><td>必须先有 P(j)=∫P(a,j)da</td></tr>
+    <tr><td>D2–D3 中 j 的尺度随 a 变化</td><td>正文没有说明先采 j 时采用哪个 a 尺度</td></tr>
+  </tbody>
+</table>
+<p><strong>关键缺口：</strong>附录中的 j0 含 x/x̄，而 x 又由 a 决定；所以不能在不知道 a 时直接使用同一个 j 分布。</p>
+
+<hr>
+
+<h1>4. j∈(0,1) 如何保证</h1>
+<ul>
+  <li>对给定 a，先计算附录给出的条件密度 P(j|a)。</li>
+  <li>只在 0&lt;j&lt;1 上积分并重新归一化，得到截断 CDF。</li>
+  <li>生成 u∼Uniform(0,1)，用数值逆 CDF 得到 j。</li>
+  <li>因此范围由截断和归一化共同保证，不是采完以后强行裁剪。</li>
+</ul>
+<p><strong>注意：</strong>只有严格构造边缘分布和条件分布后，先 a 后 j 与先 j 后 a 才描述同一个 P(a,j)。</p>
+
+<hr>
+
+<h1>5. 对数网格审查：应当保留</h1>
+<table>
+  <thead><tr><th>a 网格</th><th>归一化积分相对误差</th><th>均值相对误差</th></tr></thead>
+  <tbody>
+    <tr><td>16384 点对数网格</td><td>1.19×10^-7</td><td>3.56×10^-7</td></tr>
+    <tr><td>16384 点线性网格</td><td>1.13%</td><td>−1.11%</td></tr>
+    <tr><td>65536 点线性网格</td><td>0.173%</td><td>−0.172%</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li>a 跨越 10^-6–1 pc 六个数量级，概率结构集中在小 a 区域。</li>
+  <li>16384 点线性网格步长约 6.1×10^-5 pc，会跨过低 a 结构。</li>
+  <li>对数网格仍以真实 da 积分；它不等于改成 d ln a。</li>
+</ul>
+<p><strong>决定：</strong>不把当前对数网格替换为等宽线性 bin。</p>
+
+<hr>
+
+<h1>6. 当前复现方式：只作为经验诊断分支</h1>
+<ul>
+  <li>严格分支：<code>sample_initial_orbital_parameters</code>，直接实现 D1–D5。</li>
+  <li>Fig. 19 分支：<code>sample_figure19_orbital_parameters</code>，按照正文顺序并采用原图反推的有效尺度。</li>
+  <li>有效参数：j0,eff≈1.089；Aeff≈0.034694 pc。</li>
+  <li>该分支能复现均值与直方图量级，但不是从附录公式唯一推导出的新物理结论。</li>
+</ul>
+<p><strong>原则：</strong>复现分支与理论分支分开保留，避免用“图像更接近”掩盖来源不明的参数。</p>
+
+<hr>
+
+<h1>7. 汇报结论与下一步</h1>
+<ol>
+  <li><strong>网格不是主因：</strong>对数网格在六个数量级区间内是必要的数值设计。</li>
+  <li><strong>主因是定义不充分：</strong>论文未完整给出先采样 j 时所需的边缘分布或有效尺度。</li>
+  <li><strong>原图可被经验复现：</strong>但有效参数来自矢量图诊断，不能冒充附录严格结果。</li>
+  <li><strong>后续需确认：</strong>作者代码是否采用固定 x/x̄、额外归一化，或正文未写出的近似。</li>
+</ol>
+<p>相关实现与完整推导已记录在 <code>p_a_j.py</code>、<code>counts.ipynb</code> 和 <code>p(a,j)采样.md</code>。</p>
+
+</body>
+</html>
