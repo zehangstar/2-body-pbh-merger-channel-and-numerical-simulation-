@@ -61,6 +61,11 @@ PRADA_COSMOLOGY = {
 PRADA_HMF_SIGMA_8 = 0.817
 PRADA_HMF_SPECTRAL_INDEX = 0.962
 
+# 9 月 15 日之后的动态晕与 binary-single 基准统一采用 Prada12 Eqs.
+# (12)--(22) 加 WMAP5/HMF 线性功率谱的 sigma(M,z)。旧图复现仍可在调用处
+# 显式传入 ``model="ludlow16"`` 或 ``model="prada12"``。
+DEFAULT_HALO_MODEL = "prada12_hmf_sigma"
+
 # 球对称 top-hat 坍缩的线性临界密度。Ludlow16 Appendix C 取 1.686。
 DELTA_SC = 1.686
 
@@ -558,7 +563,25 @@ def nfw_g(concentration):
     return np.log1p(concentration) - concentration / (1.0 + concentration)
 
 
-def concentration_model(mass_msun, z, model, cap_prada=True):
+def cosmology_for_model(model=DEFAULT_HALO_MODEL):
+    """返回浓度/吸积模型配套的宇宙学参数字典。"""
+    model_name = model.lower()
+    if model_name == "ludlow16":
+        return LUDLOW_COSMOLOGY
+    if model_name in {"prada12", "prada12_hmf_sigma"}:
+        return PRADA_COSMOLOGY
+    raise ValueError(
+        "model 必须是 'ludlow16'、'prada12' 或 "
+        "'prada12_hmf_sigma'。"
+    )
+
+
+def concentration_model(
+    mass_msun,
+    z,
+    model=DEFAULT_HALO_MODEL,
+    cap_prada=True,
+):
     """统一选择 Ludlow16、Prada12 闭式或 Prada12-HMF 浓度。"""
     model_name = model.lower()
     if model_name == "ludlow16":
@@ -579,7 +602,7 @@ def concentration_model(mass_msun, z, model, cap_prada=True):
     )
 
 
-def mass_accretion_parameters(mass0_msun, model):
+def mass_accretion_parameters(mass0_msun, model=DEFAULT_HALO_MODEL):
     """由今天的质量 M0 求 Appendix C 的 z_-2、alpha 和 beta。
 
     注意这里的 alpha、beta 是质量吸积史参数，不是 Ludlow16 浓度公式中的
@@ -593,15 +616,7 @@ def mass_accretion_parameters(mass0_msun, model):
     # 不能排除参数表、实现差异或图文不一致，也未发现高红移处切换公式的证据。
     # 本函数保留印刷公式；不将反求参数或跨轨迹排序作为修正。证据见
     # SIMULATING_PBH_MERGERS_精读与复现.md 第 7.4.1 节。
-    if model.lower() == "ludlow16":
-        cosmology = LUDLOW_COSMOLOGY
-    elif model.lower() in {"prada12", "prada12_hmf_sigma"}:
-        cosmology = PRADA_COSMOLOGY
-    else:
-        raise ValueError(
-            "model 必须是 'ludlow16'、'prada12' 或 "
-            "'prada12_hmf_sigma'。"
-        )
+    cosmology = cosmology_for_model(model)
 
     concentration0 = concentration_model(
         mass0_msun, 0.0, model, cap_prada=False
@@ -627,8 +642,12 @@ def mass_accretion_parameters(mass0_msun, model):
     return z_minus2, alpha_mah, beta_mah
 
 
-def mass_accretion_history(mass0_msun, z, model):
-    """计算平均主晕质量 M(z)=M0(1+z)^alpha exp(beta*z)。"""
+def mass_accretion_history(
+    mass0_msun,
+    z,
+    model=DEFAULT_HALO_MODEL,
+):
+    """计算平均主晕质量，默认采用 Prada12-HMF-``sigma`` 基准。"""
     z = np.asarray(z, dtype=float)
     _, alpha_mah, beta_mah = mass_accretion_parameters(mass0_msun, model)
     return mass0_msun * (1.0 + z) ** alpha_mah * np.exp(beta_mah * z)

@@ -1,12 +1,15 @@
 """暗物质晕质量吸积史：论文 Fig. 9 的逐步复现脚本。
 
-这个文件对应 9 月 9 日的学习任务。它不重复实现 Ludlow16 浓度公式，
+这个文件对应 9 月 9 日的学习任务。它不重复实现浓度公式，
 而是导入 ``haloconcentration.py`` 中已经完成并核对过的函数。
 
 当前阶段提供两层可复用计算：
 
-1. 为 Fig. 9 的一组现今晕质量计算 M(z)；
+1. 为一组现今晕质量计算 M(z)；
 2. 计算同一批晕的 C(z)、R_vir(z) 与 R_s(z)。
+
+9 月 15 日之后的通用接口默认使用 ``prada12_hmf_sigma``。复现原始 Fig. 9
+时仍应显式传入 ``model="ludlow16"``，避免论文复现分支和后续模拟基准混淆。
 
 Fig. 9 的具体红移网格、绘图和 CSV 导出放在
 ``notebooks/fig09_mass_accretion_history.ipynb``，避免让主体物理模块承担
@@ -31,7 +34,9 @@ VIRIAL_OVERDENSITY = 200.0
 
 
 def calculate_mass_accretion_tracks(
-    z, present_day_masses_msun=PRESENT_DAY_MASSES_MSUN
+    z,
+    present_day_masses_msun=PRESENT_DAY_MASSES_MSUN,
+    model=hc.DEFAULT_HALO_MODEL,
 ):
     """计算中不同现今质量晕的平均质量吸积轨迹。
 
@@ -51,8 +56,8 @@ def calculate_mass_accretion_tracks(
 
     Notes
     -----
-    本文 Fig. 9 明确采用 Ludlow16。因此这里把 ``model`` 固定为
-    ``"ludlow16"``，而不是让调用者在这一阶段任意切换模型。
+    通用默认值是 ``"prada12_hmf_sigma"``。本文原始 Fig. 9 明确采用
+    Ludlow16，所以图像复现调用必须显式传入 ``model="ludlow16"``。
 
     真正的质量吸积公式仍由 ``hc.mass_accretion_history`` 计算：
 
@@ -69,24 +74,23 @@ def calculate_mass_accretion_tracks(
 
     # 先批量求每个 M0 专属的 z_-2、alpha、beta，再用二维广播一次生成
     # 所有轨迹；行对应 M0，列对应 z。
-    # 已知复现差异：当前公式的 1e15/1e14、1e14/1e13 M_sun 轨迹分别在
-    # z≈7.464、10.795 相交，原 Fig. 9 对应曲线则不相交；不能视为已精确复现。
-    # 原图参数提示高质量端可能有未说明的参数处理，但具体机制尚未确认。
+    # Ludlow16 复现分支的已知差异：当前公式的 1e15/1e14、1e14/1e13 M_sun
+    # 轨迹分别在 z≈7.464、10.795 相交，原 Fig. 9 对应曲线则不相交。
+    # 这不影响通用接口的 Prada12-HMF 默认值，但两种分支都必须保留 M0 身份。
     # 每一行必须保留同一 M0 的轨迹身份；逐红移排序会交换身份、掩盖差异。
     # 反求参数、公式一致性检查和推测边界见精读笔记第 7.4.1 节。
-    _, alpha_mah, beta_mah = hc.mass_accretion_parameters(
-        present_day_masses_msun, model="ludlow16"
-    )
     mass0 = present_day_masses_msun[:, np.newaxis]
-    return (
-        mass0
-        * (1.0 + z[np.newaxis, :]) ** alpha_mah[:, np.newaxis]
-        * np.exp(beta_mah[:, np.newaxis] * z[np.newaxis, :])
+    return hc.mass_accretion_history(
+        mass0,
+        z[np.newaxis, :],
+        model=model,
     )
 
 
 def calculate_halo_structure_tracks(
-    z, present_day_masses_msun=PRESENT_DAY_MASSES_MSUN
+    z,
+    present_day_masses_msun=PRESENT_DAY_MASSES_MSUN,
+    model=hc.DEFAULT_HALO_MODEL,
 ):
     """计算 ``M(z) -> C(z) -> R_vir(z) -> R_s(z)`` 的完整数据流。
 
@@ -96,15 +100,19 @@ def calculate_halo_structure_tracks(
     """
     z = np.atleast_1d(np.asarray(z, dtype=float))
     mass_tracks_msun = calculate_mass_accretion_tracks(
-        z, present_day_masses_msun
+        z,
+        present_day_masses_msun,
+        model=model,
     )
 
     redshift_grid = z[np.newaxis, :]
     concentration_tracks = hc.concentration_model(
-        mass_tracks_msun, redshift_grid, model="ludlow16"
+        mass_tracks_msun,
+        redshift_grid,
+        model=model,
     )
 
-    cosmology = hc.LUDLOW_COSMOLOGY
+    cosmology = hc.cosmology_for_model(model)
 
     # H0=100 h km/s/Mpc。因为 1 Mpc=1000 kpc，所以换成 km/s/kpc 后
     # H0=0.1 h；再乘 E(z) 得到同一红移的 H(z)。
