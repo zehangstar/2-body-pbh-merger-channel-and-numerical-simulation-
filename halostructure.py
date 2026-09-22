@@ -44,8 +44,11 @@ class HaloShellState:
     shell_midpoints_pc: np.ndarray
     velocity_evaluation_radii_pc: np.ndarray
     shell_density_msun_pc3: np.ndarray
+    environment_density_msun_pc3: np.ndarray
+    ksi: float
     enclosed_mass_at_velocity_radius_msun: np.ndarray
     shell_mass_msun: np.ndarray
+    velocity_mu: float
     velocity_dispersion_km_s: np.ndarray
     hard_semimajor_axis_pc: np.ndarray
     hard_semimajor_axis_au: np.ndarray
@@ -239,21 +242,24 @@ def logarithmic_shell_boundaries_pc(virial_radius_pc, shell_count):
 def binary_single_velocity_dispersion_km_s(
     radius_kpc,
     enclosed_mass_msun,
+    mu=0.5,
 ):
-    """计算论文 Eq. (24) 的局部环境速度弥散 ``sqrt(2GM(<r)/r)``。
+    """返回 ``sqrt(mu*G*M(<r)/r)``，默认 ``mu=0.5``。
 
-    原文 Table III 的 ``a_h`` 数值更接近把这里的速度再除以 2 的约定；
-    本函数按印刷 Eq. (24) 实现，不用表格数值反向改写公式。
+    论文印刷 Eq. (24) 对应 ``mu=2``。Table III 在当前评价半径下
+    更接近 ``mu=0.5``；两种差异在 notebook 中单独核对。
     """
     radius_kpc = np.asarray(radius_kpc, dtype=float)
     enclosed_mass_msun = np.asarray(enclosed_mass_msun, dtype=float)
+    mu = float(mu)
     if np.any(radius_kpc <= 0.0):
         raise ValueError("计算局部速度弥散的半径必须为正。")
     if np.any(enclosed_mass_msun < 0.0):
         raise ValueError("包围质量不能为负。")
+    if not np.isfinite(mu) or mu <= 0.0:
+        raise ValueError("速度系数 mu 必须为有限正数。")
     return np.sqrt(
-        2.0
-        * GRAVITATIONAL_CONSTANT_KPC_KM2_S2_MSUN
+        mu * GRAVITATIONAL_CONSTANT_KPC_KM2_S2_MSUN
         * enclosed_mass_msun
         / radius_kpc
     )
@@ -287,6 +293,8 @@ def build_halo_shell_state(
     primary_pbh_mass_msun=30.0,
     model=hc.DEFAULT_HALO_MODEL,
     shell_count=None,
+    velocity_mu=0.5,
+    ksi=1.0,
 ):
     """构造一个 ``(M0,z)`` 对应的 binary-single 晕壳层环境。
 
@@ -295,7 +303,9 @@ def build_halo_shell_state(
     ``M0 -> Prada12-HMF M(z) -> C[M(z),z] -> NFW -> shell state``。
 
     ``shell_count`` 默认按论文的现今质量分级选择，也可为诊断显式覆盖。
-    密度按 Eq. (28) 在壳中点取值。Eq. (24) 按原文 Table III 的位置口径：
+    ``velocity_mu=0.5`` 是本项目默认速度约定；印刷 Eq. (24) 为 2。
+    ``ksi`` 定义 ``rho_env=ksi*rho_NFW``，不修改 NFW 晕质量或几何结构。
+    密度按 Eq. (28) 在壳中点取值。速度按原文 Table III 的位置口径：
     单球模型取 ``R_vir/2``，多壳模型在各壳外边界 ``R_i`` 求
     ``M(<R_i)`` 和 ``v_disp``。两个评价半径都显式保存在返回对象中，后续
     Eqs. (19)、(25) 不需要猜测数组含义。
@@ -306,6 +316,9 @@ def build_halo_shell_state(
         raise ValueError("现今晕质量必须为正。")
     if z < 0.0:
         raise ValueError("红移 z 不能为负。")
+    ksi = float(ksi)
+    if not np.isfinite(ksi) or ksi < 0.0:
+        raise ValueError("环境密度系数 ksi 必须为有限非负数。")
 
     if shell_count is None:
         shell_count = paper_shell_count(present_day_halo_mass_msun)
@@ -379,6 +392,7 @@ def build_halo_shell_state(
     velocity_dispersion_km_s = binary_single_velocity_dispersion_km_s(
         velocity_radii_kpc,
         enclosed_at_velocity_radius_msun,
+        mu=velocity_mu,
     )
     hard_semimajor_axis_pc = hard_binary_semimajor_axis_pc(
         primary_pbh_mass_msun,
@@ -401,10 +415,15 @@ def build_halo_shell_state(
         shell_density_msun_pc3=(
             shell_density_msun_kpc3 / KILOPARSEC_IN_PC**3
         ),
+        environment_density_msun_pc3=(
+            ksi * shell_density_msun_kpc3 / KILOPARSEC_IN_PC**3
+        ),
+        ksi=ksi,
         enclosed_mass_at_velocity_radius_msun=(
             enclosed_at_velocity_radius_msun
         ),
         shell_mass_msun=shell_mass_msun,
+        velocity_mu=float(velocity_mu),
         velocity_dispersion_km_s=velocity_dispersion_km_s,
         hard_semimajor_axis_pc=hard_semimajor_axis_pc,
         hard_semimajor_axis_au=hard_semimajor_axis_pc * AU_PER_PC,
@@ -417,6 +436,8 @@ def build_halo_shell_history(
     primary_pbh_mass_msun=30.0,
     model=hc.DEFAULT_HALO_MODEL,
     shell_count=None,
+    velocity_mu=0.5,
+    ksi=1.0,
 ):
     """返回同一 ``M0`` 轨迹在多个红移上的 ``HaloShellState`` 元组。"""
     redshifts = np.atleast_1d(
@@ -437,6 +458,8 @@ def build_halo_shell_history(
             primary_pbh_mass_msun=primary_pbh_mass_msun,
             model=model,
             shell_count=fixed_shell_count,
+            velocity_mu=velocity_mu,
+            ksi=ksi,
         )
         for redshift in redshifts
     )
