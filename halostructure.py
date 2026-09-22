@@ -369,8 +369,8 @@ def build_halo_shell_state(
     velocity_radii_pc = (
         midpoints_pc
         if shell_count == 1
-        else boundaries_pc[1:]
-    )
+        else boundaries_pc[1:]  # 论文 Table III 在多壳模型中使用各壳外边界作为速度评价半径，
+    )                           #可能需要在后续计算中使用壳层中点处速度
     velocity_radii_kpc = velocity_radii_pc / KILOPARSEC_IN_PC
 
     shell_density_msun_kpc3 = rho_nfw(
