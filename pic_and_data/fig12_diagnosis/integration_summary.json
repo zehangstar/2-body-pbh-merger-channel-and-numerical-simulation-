@@ -1,0 +1,12 @@
+{
+  "chain_rule_max_relative_error": 8.95032407976521e-11,
+  "dop853_orbits": 71,
+  "dop853_success": true,
+  "dop853_classification_differences": 0,
+  "dop853_max_time_error_myr": 0.0025714625847399475,
+  "dop853_max_survivor_a_relative_error": 1.719718811798998e-08,
+  "circular_merger_time_myr": 100.00002128963285,
+  "circular_expected_merger_time_myr": 100.0,
+  "circular_survivor_a_relative_error": 8.577252241792621e-10,
+  "circular_invalid": 0
+}

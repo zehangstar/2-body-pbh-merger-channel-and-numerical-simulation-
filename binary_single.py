@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import math
 
 import numpy as np
+from scipy.integrate import RK45
 
 import haloconcentration as hc
 import halostructure as hs
@@ -56,6 +57,14 @@ class BinarySingleConfig:
     local_timestep_myr: float = 2.0
     start_redshift: float = 12.0
     sample_count_per_shell_and_step: int = 2_000_000
+    integration_method: str = "adaptive_log_a"
+    eccentricity_growth_model: str = "sesana_endpoint"
+    integration_rtol: float = 1.0e-6
+    integration_time_atol_myr: float = 1.0e-8
+    integration_log_j2_atol: float = 1.0e-9
+    integration_max_log_a_step: float = 0.25
+    integration_max_attempts: int = 10000
+    merger_radius_gm_c2: float = 6.0
 
     def __post_init__(self):
         for name in (
@@ -64,6 +73,11 @@ class BinarySingleConfig:
             "velocity_mu",
             "global_timestep_myr",
             "local_timestep_myr",
+            "integration_rtol",
+            "integration_time_atol_myr",
+            "integration_log_j2_atol",
+            "integration_max_log_a_step",
+            "merger_radius_gm_c2",
         ):
             value = float(getattr(self, name))
             if not math.isfinite(value) or value <= 0.0:
@@ -85,13 +99,19 @@ class BinarySingleConfig:
             raise ValueError("start_redshift 必须为有限非负数。")
         if self.sample_count_per_shell_and_step <= 0:
             raise ValueError("sample_count_per_shell_and_step 必须为正整数。")
+        if self.integration_method not in ("euler", "adaptive_log_a"):
+            raise ValueError("integration_method 必须是 euler 或 adaptive_log_a。")
+        if self.eccentricity_growth_model not in ("sesana_endpoint", "sesana_taper", "zero"):
+            raise ValueError("未知 eccentricity_growth_model。")
+        if not isinstance(self.integration_max_attempts, int) or self.integration_max_attempts <= 0:
+            raise ValueError("integration_max_attempts 必须为正整数。")
         steps = self.global_timestep_myr / self.local_timestep_myr
-        if not math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-10):
+        if self.integration_method == "euler" and not math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-10):
             raise ValueError("全局时间步必须是局部时间步的整数倍。")
 
     @property
     def local_steps_per_global_step(self):
-        """论文基准为 200/2=100 个 Euler 局部步。"""
+        """仅用于 Euler 分支；论文基准为 200/2=100 个局部步。"""
         return round(self.global_timestep_myr / self.local_timestep_myr)
 
 
@@ -143,7 +163,12 @@ class OrbitalDerivatives:
 
 @dataclass(frozen=True)
 class BinaryEvolutionEvents:
-    """一个冻结环境时间片的原始事件；没有物理双星数重加权。"""
+    """一个冻结环境时间片的原始事件；没有物理双星数重加权。
+
+    adaptive_log_a 中 merger_step 是该轨道接受的积分步编号，
+    completed_local_steps 是批内最大接受步数；二者不再代表 2 Myr 网格。
+    已并合轨道 final_state.a=0 是终止标记，实际终点由配置的有限半径定义。
+    """
 
     final_state: BinaryOrbitState
     hard_mask: np.ndarray
@@ -222,6 +247,21 @@ def hardening_coefficient(semi_major_axis_pc, hard_semimajor_axis_pc):
     return 14.55 * (1.0 + 0.287 * a / ah) ** -0.95
 
 
+def eccentricity_growth_coefficient(a, e, ah, model="sesana_endpoint"):
+    """主设置为原有端点 K；taper 与 zero 仅用于明确标注的敏感性诊断。
+
+    taper 在 e>0.9 乘以 (1-e²)/(1-0.9²)，不是新的 Sesana 拟合。
+    """
+    if model == "zero":
+        return np.zeros_like(np.asarray(a, dtype=float))
+    k = sesana_equal_mass_k(a, e, ah)
+    if model == "sesana_taper":
+        k = k * np.minimum(1.0, (1.0 - np.asarray(e)**2) / 0.19)
+    elif model != "sesana_endpoint":
+        raise ValueError("未知 eccentricity_growth_model。")
+    return k
+
+
 def peters_f(eccentricity):
     """目标 PBH 论文 Eq. (20)。"""
     e = np.asarray(eccentricity, dtype=float)
@@ -242,6 +282,7 @@ def orbital_derivatives(
     hard_semimajor_axis_pc,
     primary_mass_msun=30.0,
     secondary_mass_msun=30.0,
+    eccentricity_growth_model="sesana_endpoint",
 ):
     """向量化计算目标 PBH 论文 Eqs. (19)、(25) 的分项右端。"""
     if primary_mass_msun != secondary_mass_msun:
@@ -259,7 +300,7 @@ def orbital_derivatives(
         raise ValueError("环境密度必须为有限非负数。")
     if not math.isfinite(v) or v <= 0.0:
         raise ValueError("速度弥散必须为有限正数。")
-    k = sesana_equal_mass_k(a, e, ah)
+    k = eccentricity_growth_coefficient(a, e, ah, eccentricity_growth_model)
     h = hardening_coefficient(a, ah)
 
     a_m = a * PARSEC_M
@@ -288,6 +329,8 @@ def evolve_binary_batch(
 ):
     """在一个冻结的壳层环境中推进一批初态，返回原始并合事件。
 
+    默认 adaptive_log_a 按容差控制独立轨道步长，见下方变量变换积分器。
+    integration_method='euler' 显式选择原有论文步长诊断分支：
     显式 Euler 以 ``config.local_timestep_myr`` 推进一个
     ``config.global_timestep_myr`` 时间片。若 Euler 使 a<=0，记录为
     并合，并用该步线性插值估计事件时间；论文没有指定此越界规则。
@@ -307,6 +350,8 @@ def evolve_binary_batch(
     shell_index = int(shell_index)
     if shell_index < 0 or shell_index >= shell_state.shell_mass_msun.size:
         raise IndexError("shell_index 超出壳层范围。")
+    if config.integration_method == "adaptive_log_a":
+        return _evolve_adaptive_log_a(a, e, shell_state, shell_index, config)
     rho = float(shell_state.environment_density_msun_pc3[shell_index])
     v = float(shell_state.velocity_dispersion_km_s[shell_index])
     ah = float(shell_state.hard_semimajor_axis_pc[shell_index])
@@ -329,6 +374,7 @@ def evolve_binary_batch(
             rhs = orbital_derivatives(
                 a[active_index], e[active_index], rho, v, ah,
                 config.primary_mass_msun, config.secondary_mass_msun,
+                config.eccentricity_growth_model,
             )
             next_a = a[active_index] + dt * rhs.da_pc_myr
             next_e = e[active_index] + dt * rhs.de_per_myr
@@ -364,4 +410,152 @@ def evolve_binary_batch(
         merger_step=merger_step,
         merger_time_myr=merger_time_myr,
         completed_local_steps=completed_steps,
+    )
+
+
+def log_a_orbital_rhs(u, state, initial_a_pc, rho, velocity, ah, config):
+    """Eqs.19/25 的等价变量变换，返回 d(t, ln(j²))/du。
+
+    u=ln(a_initial/a) 单调递增；j²=1-e² 单独保存，避免高 e 时
+    相减丢失精度。GW 主导末期 du/dt 发散，但 dt/du 趋于零，
+    dln(j²)/du 有限。此函数也用于独立 scipy DOP853 对照。
+    非物理试探级返回 NaN，外层自适应积分器拒绝该步，不裁剪已接受轨道。
+    """
+    state = np.asarray(state, dtype=float)
+    log_j2 = state[..., 1]
+    valid = np.isfinite(log_j2) & (log_j2 <= 0.0) & (log_j2 > -700.0)
+    safe_log_j2 = np.clip(np.nan_to_num(log_j2), -700.0, 0.0)
+    e2 = -np.expm1(safe_log_j2)
+    e = np.sqrt(e2)
+    log_a = np.log(initial_a_pc) - u
+    a = np.exp(log_a)
+    k = eccentricity_growth_coefficient(a, np.minimum(e, np.nextafter(1.0, 0.0)), ah, config.eccentricity_growth_model)
+    h = hardening_coefficient(a, ah)
+    m1 = config.primary_mass_msun * SOLAR_MASS_KG
+    m2 = config.secondary_mass_msun * SOLAR_MASS_KG
+    beta = (64.0 / 5.0 * G_SI**3 * (m1 + m2) * m1 * m2 / C_SI**5
+            * MYR_S / PARSEC_M**4)
+    alpha = G_SI * rho * SOLAR_MASS_KG / PARSEC_M**3 / (velocity * 1000.0) * PARSEC_M * MYR_S
+    polynomial = 1.0 + 73.0 / 24.0 * e2 + 37.0 / 96.0 * e2**2
+    log_gw_rate = np.log(beta) - 4.0 * log_a - 3.5 * safe_log_j2 + np.log(polynomial)
+    log_env_rate = np.log(alpha) + np.log(h) + log_a if alpha > 0.0 else np.full_like(a, -np.inf)
+    log_rate = np.logaddexp(log_env_rate, log_gw_rate)
+    # Combine exponentials before evaluating: no large intermediate 1/j².
+    dy_du = (-2.0 * e * k * np.exp(log_env_rate - log_rate - safe_log_j2)
+             + 19.0 / 6.0 * e2 * (1.0 + 121.0 / 304.0 * e2)
+             / polynomial * np.exp(log_gw_rate - log_rate))
+    answer = np.stack((np.exp(-log_rate), dy_du), axis=-1)
+    return np.where(np.asarray(valid)[..., None], answer, np.nan)
+
+
+def _evolve_adaptive_log_a(a, e, shell_state, shell_index, config):
+    """逐轨道独立步长的向量化 Dormand-Prince 5(4)。
+
+    使用安装版本 scipy.integrate.RK45 的 Butcher 系数和四次稠密输出系数。
+    终点为 t=global_timestep 或 a=merger_radius_gm_c2*G*(m1+m2)/c²。
+    后者是本项目的有限终止约定；不声称论文指定了 6GM/c²。
+    Euler 的 local_timestep_myr 不控制此积分器，容差与 max_log_a_step 控制精度。
+    """
+    if config.primary_mass_msun != config.secondary_mass_msun:
+        raise ValueError("当前 Sesana K 只实现 q=1。")
+    rho = float(shell_state.environment_density_msun_pc3[shell_index])
+    velocity = float(shell_state.velocity_dispersion_km_s[shell_index])
+    ah = float(shell_state.hard_semimajor_axis_pc[shell_index])
+    if not np.isfinite(rho) or rho < 0 or not np.isfinite(velocity) or velocity <= 0:
+        raise ValueError("壳层密度和速度无效。")
+    initial_a = a.copy()
+    hard = a <= ah
+    merged = np.zeros(a.size, dtype=bool)
+    invalid = np.zeros(a.size, dtype=bool)
+    k_above = hard & (e > 0.9)
+    merger_step = np.full(a.size, -1, dtype=int)
+    merger_time = np.full(a.size, np.nan)
+    accepted_steps = np.zeros(a.size, dtype=int)
+    cutoff = (config.merger_radius_gm_c2 * G_SI
+              * (config.primary_mass_msun + config.secondary_mass_msun)
+              * SOLAR_MASS_KG / C_SI**2 / PARSEC_M)
+    u_stop = np.log(initial_a / cutoff)
+    u = np.zeros(a.size)
+    state = np.column_stack((np.zeros(a.size), np.log((1.0 - e) * (1.0 + e))))
+    step_size = np.full(a.size, min(0.02, config.integration_max_log_a_step))
+    pending = hard.copy()
+    immediate = hard & (u_stop <= 0)
+    merged[immediate] = True
+    merger_time[immediate] = 0.0
+    merger_step[immediate] = 0
+    pending[immediate] = False
+    duration = config.global_timestep_myr
+    atol = np.array([config.integration_time_atol_myr, config.integration_log_j2_atol])
+
+    for _ in range(config.integration_max_attempts):
+        ix = np.flatnonzero(pending)
+        if not ix.size:
+            break
+        uu, yy, aa = u[ix], state[ix], initial_a[ix]
+        stages = np.empty((7, ix.size, 2))
+        stages[0] = log_a_orbital_rhs(uu, yy, aa, rho, velocity, ah, config)
+        # Limit the candidate near the time boundary; dense output locates its crossing.
+        remaining = duration - yy[:, 0]
+        hh = np.minimum(step_size[ix], u_stop[ix] - uu)
+        hh = np.minimum(hh, 1.1 * remaining / np.maximum(stages[0, :, 0], 1e-300))
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            for stage in range(1, 6):
+                trial = yy + hh[:, None] * np.einsum("s,snk->nk", RK45.A[stage, :stage], stages[:stage])
+                stages[stage] = log_a_orbital_rhs(uu + RK45.C[stage] * hh, trial, aa, rho, velocity, ah, config)
+            next_state = yy + hh[:, None] * np.einsum("s,snk->nk", RK45.B, stages[:6])
+            stages[6] = log_a_orbital_rhs(uu + hh, next_state, aa, rho, velocity, ah, config)
+            error = hh[:, None] * np.einsum("s,snk->nk", RK45.E, stages)
+            scale = atol + config.integration_rtol * np.maximum(np.abs(yy), np.abs(next_state))
+            error_norm = np.max(np.abs(error) / scale, axis=1)
+        finite = np.all(np.isfinite(next_state), axis=1) & np.isfinite(error_norm)
+        ok = finite & (error_norm <= 1) & (next_state[:, 1] <= 0) & (next_state[:, 0] >= yy[:, 0])
+        factor = np.full(ix.size, 0.2)
+        factor[finite] = np.clip(0.9 * np.maximum(error_norm[finite], 1e-16)**-0.2, 0.2, 5.0)
+        factor[~ok] = np.minimum(factor[~ok], 0.5)
+        step_size[ix] = np.minimum(config.integration_max_log_a_step, hh * factor)
+        accepted = ix[ok]
+        accepted_steps[accepted] += 1
+        u[accepted] = uu[ok] + hh[ok]
+        state[accepted] = next_state[ok]
+        k_above[accepted] |= next_state[ok, 1] < np.log(0.19)
+
+        at_time = ok & (next_state[:, 0] >= duration)
+        if np.any(at_time):
+            # Standard RK45 quartic dense output; bisection is vectorized per orbit.
+            coeff = np.einsum("snk,sq->nkq", stages[:, at_time], RK45.P)
+            lower = np.zeros(np.count_nonzero(at_time))
+            upper = np.ones_like(lower)
+            for _ in range(40):
+                fraction = 0.5 * (lower + upper)
+                powers = fraction[:, None] ** np.arange(1, 5)
+                interpolated = yy[at_time] + hh[at_time, None] * np.einsum("nkq,nq->nk", coeff, powers)
+                below = interpolated[:, 0] < duration
+                lower = np.where(below, fraction, lower)
+                upper = np.where(below, upper, fraction)
+            ended = ix[at_time]
+            u[ended] = uu[at_time] + hh[at_time] * fraction
+            state[ended] = interpolated
+            state[ended, 0] = duration
+            pending[ended] = False
+
+        at_merger = ok & ~at_time & (u[ix] >= u_stop[ix] - 1e-12)
+        ended = ix[at_merger]
+        merged[ended] = True
+        merger_time[ended] = state[ended, 0]
+        merger_step[ended] = accepted_steps[ended]
+        pending[ended] = False
+        stalled = pending[ix] & (step_size[ix] < 8 * np.spacing(np.maximum(1.0, uu)))
+        invalid[ix[stalled]] = True
+        pending[ix[stalled]] = False
+
+    invalid[pending] = True
+    a[hard] = initial_a[hard] * np.exp(-u[hard])
+    a[merged] = 0.0
+    e[hard] = np.sqrt(-np.expm1(state[hard, 1]))
+    return BinaryEvolutionEvents(
+        final_state=BinaryOrbitState(a, e, hard & ~merged & ~invalid),
+        hard_mask=hard, merged_mask=merged, invalid_mask=invalid,
+        k_above_calibration_mask=k_above, merger_step=merger_step,
+        merger_time_myr=merger_time,
+        completed_local_steps=int(accepted_steps.max()) if a.size else 0,
     )

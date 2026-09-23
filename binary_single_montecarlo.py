@@ -31,6 +31,8 @@ class RawShellMergerHistory:
     ``(时间片数, 壳层数)``；
     ``cumulative_mergers`` 的形状为 ``(时间边界数, 壳层数)``，
     第一行是初始时刻的零并合数。
+    local_timestep_per_step_myr 只记录 Euler 实际步长；自适应分支为 NaN，
+    精度设置保存在 configuration，不能把遗留的 2 Myr 参数当作其实际步长。
     """
 
     present_day_halo_mass_msun: float
@@ -170,15 +172,18 @@ def run_raw_shell_monte_carlo(
     orbital_distribution=None,
     random_seed=12345,
     chunk_size=100_000,
+    progress_callback=None,
 ):
     """驱动 Fig. 12 的逐时间片、逐壳层、分块原始 Monte Carlo 计数。
 
     默认采样器是 ``p_a_j.AppendixDOrbitalDistribution`` 的严格联合分布，
     其 ``rho_eq`` 沿用该模块的显式默认值；可传入具有 ``sample(n,rng)``
     方法的分布替换。``random_seed`` 和 ``chunk_size`` 固定后可重复。
+    可选 progress_callback(completed_steps, total_steps) 在每片完成后调用。
 
     每片使用片首红移更新一次 halo，内部环境冻结。最后不足一个全局步的
-    时间片使用 ``ceil(剩余时间/局部步长)`` 个等长 Euler 步，以 z=0 收尾；
+    时间片在 Euler 分支使用 ``ceil(剩余时间/局部步长)`` 个等长步；
+    自适应分支直接以实际剩余时长终止，两者均以 z=0 收尾；
     这不是目标论文明确指定的终点算法。若请求的起点时 halo 内不足约
     30 个 PBH，则按 ``M(z)`` 把起点推迟；这里只保存计数，不保存个体轨道。
     """
@@ -224,14 +229,19 @@ def run_raw_shell_monte_carlo(
         duration = float(time_edges[time_index + 1] - time_edges[time_index])
         if math.isclose(duration, config.global_timestep_myr, rel_tol=0.0, abs_tol=1e-9):
             step_config = config
-        else:
+        elif config.integration_method == "euler":
             local_count = max(1, math.ceil(duration / config.local_timestep_myr))
             step_config = replace(
                 config,
                 global_timestep_myr=duration,
                 local_timestep_myr=duration / local_count,
             )
-        actual_local_steps[time_index] = step_config.local_timestep_myr
+        else:
+            step_config = replace(config, global_timestep_myr=duration)
+        actual_local_steps[time_index] = (
+            step_config.local_timestep_myr
+            if config.integration_method == "euler" else np.nan
+        )
         shell_state = (
             first_shell_state if time_index == 0
             else bs.build_shell_environment(
@@ -263,6 +273,8 @@ def run_raw_shell_monte_carlo(
                     np.count_nonzero(events.k_above_calibration_mask)
                 )
                 remaining -= draw_count
+        if progress_callback is not None:
+            progress_callback(time_index + 1, n_steps)
 
     cumulative = np.vstack((
         np.zeros((1, n_shells), dtype=np.int64),
