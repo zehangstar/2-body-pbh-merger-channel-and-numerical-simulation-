@@ -9,7 +9,7 @@
 必须在调用时显式指定，不能混称论文原始模型。
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 
 import numpy as np
@@ -411,6 +411,39 @@ def evolve_binary_batch(
         merger_time_myr=merger_time_myr,
         completed_local_steps=completed_steps,
     )
+
+
+def evolve_binary_population_batch(a, e, shell_state, shell_index, config=None):
+    """推进 cohort 存活者：硬双星用完整方程，软双星仍受 GW 作用。
+
+    返回的 hard_mask 是该片开始时的硬筛选；merged_mask 可以包含软双星
+    的纯 GW 并合。软双星不加入环境散射、离解或反冲模型。调用者应在下片
+    传入存活者的 final_state，不能重新抽取这些个体的初始轨道。
+    """
+    if config is None:
+        config = BinarySingleConfig()
+    events = evolve_binary_batch(a, e, shell_state, shell_index, config)
+    soft = np.flatnonzero(~events.hard_mask)
+    if soft.size:
+        a_soft = np.asarray(a)[soft]
+        isolated = replace(
+            shell_state,
+            environment_density_msun_pc3=np.zeros_like(shell_state.shell_mass_msun),
+            hard_semimajor_axis_pc=np.full_like(shell_state.shell_mass_msun, np.max(a_soft)),
+        )
+        gw = evolve_binary_batch(
+            a_soft, np.asarray(e)[soft], isolated, shell_index,
+            replace(config, eccentricity_growth_model='zero'),
+        )
+        events.final_state.semi_major_axis_pc[soft] = gw.final_state.semi_major_axis_pc
+        events.final_state.eccentricity[soft] = gw.final_state.eccentricity
+        events.final_state.active_mask[soft] = ~gw.merged_mask & ~gw.invalid_mask
+        events.merged_mask[soft] = gw.merged_mask
+        events.invalid_mask[soft] = gw.invalid_mask
+        events.merger_time_myr[soft] = gw.merger_time_myr
+        events.merger_step[soft] = gw.merger_step
+        events = replace(events, completed_local_steps=max(events.completed_local_steps, gw.completed_local_steps))
+    return events
 
 
 def log_a_orbital_rhs(u, state, initial_a_pc, rho, velocity, ah, config):

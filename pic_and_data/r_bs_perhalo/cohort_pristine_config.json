@@ -1,0 +1,42 @@
+{
+  "halo_M0_msun": 1500000.0,
+  "config": {
+    "halo_model": "prada12_hmf_sigma",
+    "primary_mass_msun": 30.0,
+    "secondary_mass_msun": 30.0,
+    "pbh_fraction_total": 1.0,
+    "fraction_single": 0.5,
+    "fraction_binary": 0.5,
+    "velocity_mu": 0.5,
+    "ksi": 1.0,
+    "global_timestep_myr": 200.0,
+    "local_timestep_myr": 2.0,
+    "start_redshift": 12.0,
+    "sample_count_per_shell_and_step": 5000,
+    "integration_method": "adaptive_log_a",
+    "eccentricity_growth_model": "sesana_endpoint",
+    "integration_rtol": 1e-06,
+    "integration_time_atol_myr": 1e-08,
+    "integration_log_j2_atol": 1e-09,
+    "integration_max_log_a_step": 0.25,
+    "integration_max_attempts": 10000,
+    "merger_radius_gm_c2": 6.0
+  },
+  "population_config": {
+    "initial_samples_per_shell": 5000,
+    "accretion_samples_per_shell": 256,
+    "entry_orbit_model": "pristine",
+    "formation_age_myr": 0.0
+  },
+  "prior": {
+    "pbh_mass_msun": 30.0,
+    "f_pbh": 1.0,
+    "rho_eq_msun_pc3": 1614.9730832622506,
+    "sigma_eq": 0.005,
+    "alpha": 0.1,
+    "minimum_semi_major_axis_pc": 1e-06,
+    "maximum_semi_major_axis_pc": 1.0,
+    "semi_major_axis_grid_point_count": 16384
+  },
+  "seed": 20260923
+}

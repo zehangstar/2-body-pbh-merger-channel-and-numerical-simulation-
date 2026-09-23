@@ -1,0 +1,9 @@
+{
+  "orbit_count": 77,
+  "invalid": 0,
+  "classification_differences": 0,
+  "max_time_error_myr": 0.00015336058753234738,
+  "numerical_elapsed_myr": 13484.03621897459,
+  "analytic_elapsed_myr": 13484.03621897459,
+  "elapsed_difference_myr": 0.0
+}

@@ -1,11 +1,13 @@
-"""Fig. 12 的未重加权 binary-single Monte Carlo 驱动层。
+"""Binary-single Monte Carlo：方案 A 独立重抽和方案 B cohort 继承。
 
 每个全局时间片独立从 Appendix D 联合分布抽取初态，逐壳、分块调用
 ``binary_single.evolve_binary_batch``，只累计原始样本并合数。论文第 IV 节
 描述了每壳每步独立选取 ``N_sample``；没有说明未并合样本跨时间片的继承。
 这里采用独立时间片口径，不声称它已由作者代码验证。
 
-本模块不进行真实壳层双星数重加权、HMF 积分、平滑或绘图。
+run_raw_shell_monte_carlo 保留方案 A 的原始样本计数。
+run_cohort_shell_monte_carlo 按新增壳层质量赋予权重，保存和推进存活轨道。
+两者都不做 HMF 积分、平滑或绘图。
 """
 
 from dataclasses import dataclass, replace
@@ -299,3 +301,194 @@ def run_raw_shell_monte_carlo(
         k_above_calibration_per_step=k_above_calibration,
         cumulative_mergers=cumulative,
     )
+
+
+@dataclass(frozen=True)
+class CohortPopulationConfig:
+    """cohort 人口模型的显式选择，不代表原论文未公开的实现。
+
+    entry_orbit_model='gw_aged' 将原初轨道在晕外以 GW 演化至入晕时刻；
+    'pristine' 仅用于隔离人口继承影响的对照。formation_age_myr=0 是
+    等时形成于宇宙早期的时间零近似，可替换为指定形成宇宙年龄。
+    新增人口按每壳质量增量注入，个体保持壳编号；因此只支持每壳质量
+    单调增长的轨迹。不对负增量取绝对值或静默补回人口。
+    """
+    initial_samples_per_shell: int = 5000
+    accretion_samples_per_shell: int = 256
+    entry_orbit_model: str = 'gw_aged'
+    formation_age_myr: float = 0.0
+
+    def __post_init__(self):
+        for n in (self.initial_samples_per_shell, self.accretion_samples_per_shell):
+            if not isinstance(n, (int, np.integer)) or n <= 0:
+                raise ValueError('cohort 样本数必须是正整数。')
+        if self.entry_orbit_model not in ('gw_aged', 'pristine'):
+            raise ValueError('entry_orbit_model 必须是 gw_aged 或 pristine。')
+        if not math.isfinite(self.formation_age_myr) or self.formation_age_myr < 0:
+            raise ValueError('formation_age_myr 必须是有限非负数。')
+
+
+@dataclass(frozen=True)
+class CohortOrbitalPopulation:
+    """单壳存活者；entry_boundary 保留入晕 cohort 身份。"""
+    semi_major_axis_pc: np.ndarray
+    eccentricity: np.ndarray
+    weight: np.ndarray
+    entry_boundary: np.ndarray
+
+
+@dataclass(frozen=True)
+class CohortShellMergerHistory:
+    present_day_halo_mass_msun: float
+    configuration: bs.BinarySingleConfig
+    population_configuration: CohortPopulationConfig
+    random_seed: int
+    time_edges_myr: np.ndarray
+    redshift_edges: np.ndarray
+    shell_mass_at_boundary_msun: np.ndarray
+    drawn_per_boundary: np.ndarray
+    supplied_binary_weight_per_boundary: np.ndarray
+    outside_merged_weight_per_boundary: np.ndarray
+    entered_alive_weight_per_boundary: np.ndarray
+    surviving_weight_at_boundary: np.ndarray
+    raw_mergers_per_step: np.ndarray
+    merged_weight_per_step: np.ndarray
+    soft_gw_merged_weight_per_step: np.ndarray
+    final_populations: tuple
+
+    @property
+    def elapsed_time_edges_myr(self):
+        return self.time_edges_myr - self.time_edges_myr[0]
+
+    @property
+    def rate_shell_per_year(self):
+        return self.merged_weight_per_step / (np.diff(self.time_edges_myr)[:, None] * 1e6)
+
+    @property
+    def cumulative_merger_weight(self):
+        return np.vstack((np.zeros(self.merged_weight_per_step.shape[1]),
+                          np.cumsum(self.merged_weight_per_step, axis=0)))
+
+    @property
+    def population_balance_residual(self):
+        """逐边界：累计供给 = 晕外已并合 + 晕内已并合 + 当前存活。"""
+        return (np.cumsum(self.supplied_binary_weight_per_boundary, axis=0)
+                - np.cumsum(self.outside_merged_weight_per_boundary, axis=0)
+                - self.cumulative_merger_weight - self.surviving_weight_at_boundary)
+
+
+def run_cohort_shell_monte_carlo(
+    present_day_halo_mass_msun=1.15e12,
+    config=None,
+    population_config=None,
+    orbital_distribution=None,
+    random_seed=12345,
+    progress_callback=None,
+):
+    """方案 B：带入晕 cohort 和质量权重的人口守恒轨道演化。
+
+    每个边界 k 将 f_PBH*f_binary*Delta M_shell/(m1+m2) 的原初双星
+    系统权重注入该壳。每壳新注入 n 个独立样本，每个权重 Delta N/n。
+    gw_aged 入口会先扣除晕外已经并合的权重，并保留入晕前 GW 演化状态。
+    晕内硬双星用完整轨道方程；软双星仍以 GW 演化。每片永久移除并合者，
+    存活者保留 a,e,weight,entry_boundary；绝不乘回完整壳层人口。
+
+    环境冻结于片首，新增质量在时间边界加入；最终 z=0 边界也登记新质量，
+    但不给它额外演化时长。final_populations 包含这些刚进入的终点存活者。
+    保持壳编号、按各壳质量增量供给、早期共同形成是显式模型闭合条件。
+    不含反冲、软双星离解、再形成、双星合并后代再入或壳间迁移。
+    """
+    config = bs.BinarySingleConfig() if config is None else config
+    population_config = CohortPopulationConfig() if population_config is None else population_config
+    if config.integration_method != 'adaptive_log_a':
+        raise ValueError('cohort 的任意入晕年龄目前需要 adaptive_log_a。')
+    if not isinstance(random_seed, (int, np.integer)) or random_seed < 0:
+        raise ValueError('random_seed 必须是非负整数。')
+    distribution = orbital_distribution
+    if distribution is None:
+        distribution = p_a_j.AppendixDOrbitalDistribution(
+            pbh_mass_msun=config.primary_mass_msun, f_pbh=config.pbh_fraction_total)
+    if not callable(getattr(distribution, 'sample', None)):
+        raise TypeError('orbital_distribution 必须提供 sample(n,rng)。')
+    cosmology = hc.cosmology_for_model(config.halo_model)
+    z0 = start_redshift_with_minimum_pbh_count(present_day_halo_mass_msun, config)
+    times, redshifts = global_time_grid(z0, config.global_timestep_myr, cosmology)
+    if population_config.formation_age_myr > times[0]:
+        raise ValueError('形成时间不能晚于首次入晕时间。')
+    shells = [bs.build_shell_environment(present_day_halo_mass_msun, float(z), config) for z in redshifts]
+    masses = np.array([s.shell_mass_msun for s in shells])
+    increments = np.diff(np.vstack((np.zeros(masses.shape[1]), masses)), axis=0)
+    tolerance = 1e-12 * max(float(np.max(masses)), 1.0)
+    if np.any(increments < -tolerance):
+        raise ValueError('壳质量有负增量：需要显式壳间输运模型，不能使用当前 cohort 入口。')
+    increments = np.maximum(increments, 0.0)  # 仅容忍上方检查通过的舍入误差。
+    supplied = (config.pbh_fraction_total * config.fraction_binary * increments
+                / (config.primary_mass_msun + config.secondary_mass_msun))
+    nsteps, nshell = len(times)-1, masses.shape[1]
+    drawn = np.zeros_like(masses, dtype=np.int64)
+    outside = np.zeros_like(masses)
+    entered = np.zeros_like(masses)
+    surviving = np.zeros_like(masses)
+    raw_mergers = np.zeros((nsteps, nshell), dtype=np.int64)
+    merged_weight = np.zeros((nsteps, nshell))
+    soft_merged_weight = np.zeros_like(merged_weight)
+    populations = [CohortOrbitalPopulation(np.empty(0),np.empty(0),np.empty(0),np.empty(0,dtype=int)) for _ in range(nshell)]
+    rng = np.random.default_rng(int(random_seed))
+
+    for k in range(nsteps+1):
+        shell = shells[k]
+        for i in range(nshell):
+            if supplied[k,i] > 0:
+                n = (population_config.initial_samples_per_shell if k == 0
+                     else population_config.accretion_samples_per_shell)
+                sample = distribution.sample(n, rng)
+                a, e = sample.semi_major_axis_pc.copy(), sample.eccentricity.copy()
+                if a.size != n:
+                    raise ValueError('cohort 入口采样数量不一致。')
+                weight = supplied[k,i]/n
+                drawn[k,i] = n
+                age = times[k] - population_config.formation_age_myr
+                if population_config.entry_orbit_model == 'gw_aged' and age > 0:
+                    isolated = replace(shell,
+                        environment_density_msun_pc3=np.zeros(nshell),
+                        hard_semimajor_axis_pc=np.full(nshell, np.max(a)))
+                    aged = bs.evolve_binary_batch(a,e,isolated,i,replace(config,
+                        global_timestep_myr=float(age),eccentricity_growth_model='zero'))
+                    if aged.invalid_count:
+                        raise RuntimeError(f'晕外演化失效：边界 {k}，壳 {i+1}，{aged.invalid_count} 条。')
+                    outside[k,i] = weight*aged.merger_count
+                    keep = ~aged.merged_mask
+                    a, e = aged.final_state.semi_major_axis_pc[keep], aged.final_state.eccentricity[keep]
+                entered[k,i] = weight*a.size
+                old = populations[i]
+                populations[i] = CohortOrbitalPopulation(
+                    np.r_[old.semi_major_axis_pc,a], np.r_[old.eccentricity,e],
+                    np.r_[old.weight,np.full(a.size,weight)],
+                    np.r_[old.entry_boundary,np.full(a.size,k,dtype=int)])
+            population = populations[i]
+            surviving[k,i] = population.weight.sum()
+            if k == nsteps or not population.weight.size:
+                continue
+            step_config = replace(config,global_timestep_myr=float(times[k+1]-times[k]))
+            event = bs.evolve_binary_population_batch(population.semi_major_axis_pc,
+                population.eccentricity,shell,i,step_config)
+            if event.invalid_count:
+                raise RuntimeError(f'晕内演化失效：时间片 {k}，壳 {i+1}，{event.invalid_count} 条。')
+            raw_mergers[k,i] = event.merger_count
+            merged_weight[k,i] = population.weight[event.merged_mask].sum()
+            soft_merged_weight[k,i] = population.weight[event.merged_mask & ~event.hard_mask].sum()
+            keep = ~event.merged_mask
+            populations[i] = CohortOrbitalPopulation(
+                event.final_state.semi_major_axis_pc[keep],event.final_state.eccentricity[keep],
+                population.weight[keep],population.entry_boundary[keep])
+        if progress_callback is not None and k < nsteps:
+            progress_callback(k+1,nsteps)
+    return CohortShellMergerHistory(
+        present_day_halo_mass_msun=float(present_day_halo_mass_msun),
+        configuration=config,population_configuration=population_config,
+        random_seed=int(random_seed),time_edges_myr=times,redshift_edges=redshifts,
+        shell_mass_at_boundary_msun=masses,drawn_per_boundary=drawn,
+        supplied_binary_weight_per_boundary=supplied,outside_merged_weight_per_boundary=outside,
+        entered_alive_weight_per_boundary=entered,surviving_weight_at_boundary=surviving,
+        raw_mergers_per_step=raw_mergers,merged_weight_per_step=merged_weight,
+        soft_gw_merged_weight_per_step=soft_merged_weight,final_populations=tuple(populations))

@@ -1,0 +1,16 @@
+{
+  "source": "tmp\\arxiv_2408.06515v2_source\\plot_1526417.97_X.pdf",
+  "sha256": "53af943e942e2b15f2ff94d2e83149d7dd415f3ca0fc1efcdeca2d803c6e702b",
+  "x_log10_calibration": [
+    0.010399524150679592,
+    -3.8622152230524587
+  ],
+  "y_log10_calibration": [
+    -0.007366122333874773,
+    -8.89383414333029
+  ],
+  "simulation_path": 64,
+  "polynomial_path": 65,
+  "mass_filename_msun": 1526417.97,
+  "caption_mass_msun": 1500000.0
+}
