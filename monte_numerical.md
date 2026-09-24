@@ -1,963 +1,928 @@
-# 第 IV 节数值模拟：从输入、轨道演化到并合率输出
+# 第 IV 节数值模拟：方案 A 独立重抽与方案 B cohort 继承
 
-## 0. 本文档的范围
+更新：2026-09-24。本文按当前主干实现重写，说明从输入、初态抽样、轨道演化、人口更新到单 halo 并合率的完整逻辑。本文不是作者源码说明书，也不把项目新增方案反写为论文原算法。
 
-本文档整理目标论文第 IV 节及其直接相关的附录 D、E，说明其中“原初黑洞双星—单体相互作用”数值模拟的完整逻辑。重点不是逐句翻译，而是把论文散落在正文、公式、图注和表格中的设置重组成一条可实现的数据流。
+## 0. 阅读方式、依据与范围
 
-为避免把复现代码中的选择误写成论文事实，下文使用三类标记：
+依据分为三层：
 
-- **论文明确给出**：可以直接由正文、公式或表格确认；
-- **由论文设定直接推出**：是实现时必需、且可由论文定义推导的量，但论文未单独写成公式；
-- **论文未说明/存在歧义**：不能在实现时静默补齐，必须作为项目自己的数值选择记录。
+- **论文原述**：Aljaf & Cholis 的 [Simulating Binary Primordial Black Hole Mergers in Dark Matter Halos](https://arxiv.org/abs/2408.06515v2)，第 IV 节及附录 D、E。本地正文源文件为 [paper.tex](tmp/arxiv_2408.06515v2_source/paper.tex)。
+- **当前实现**：[halostructure.py](halostructure.py)、[p_a_j.py](p_a_j.py)、[binary_single.py](binary_single.py)、[binary_single_montecarlo.py](binary_single_montecarlo.py)。
+- **项目扩展/推导**：严格联合归一化、Adaptive 积分、有限并合终点，以及 B 的人口供给、晕外老化、轨道继承和事件权重。下文明确说明这些选择，而不声称它们由作者唯一指定。
 
-特别说明：论文第 IV 节采用 **Ludlow16 浓度关系**。本项目后续默认采用 **Prada12-HMF 吸积史/浓度接口**，这是复现工程的可替换模型选择，不应倒写成论文原始设置。
+运行示例见 [R_bs_perhalo.ipynb](notebooks/R_bs_perhalo.ipynb)；本次已有数值证据见 [并合率演化诊断报告.md](并合率演化诊断报告.md)。本文解释算法，不重新运行模拟或修改主程序。
 
----
+当前工作止于单 halo 人口与并合率。B 内部的“样本权重”是表达真实系统数所必需的，不等于已经开展跨 halo 的人口重加权或 HMF 积分。
 
-## 1. 一句话说明模拟的核心
+建议先读第 1、6、7 节把握 A/B 区别，再读第 2–5 节共同物理，最后读第 8–13 节的估计器、接口与限制。
 
-这不是逐个解析 PBH 散射过程的直接 $N$-体模拟，而是一个**分层的 Monte Carlo 转移估计器**：
+## 1. 核心：轨道动力学相同，不代表人口历史相同
 
-1. 用质量吸积史和 NFW 模型给出每个红移、每个壳层的平滑环境；
-2. 从早期 PBH 双星分布中抽取相同数量的轨道样本；
-3. 只保留在当地环境中属于硬双星的样本；
-4. 用平均化的双星—单体硬化公式与引力波反作用公式演化 $a,e$；
-5. 统计该环境中样本在一个时间片内并合的比例；
-6. 再乘以该壳层真实拥有的双星数，得到物理并合率；
-7. 最后用 halo mass function 对不同 halo 质量积分，得到共动体积并合率。
+这不是逐次解析三体接近的直接 N 体模拟。给定初态和冻结环境后，轨道演化由平均化 ODE 确定；Monte Carlo 随机性主要来自对初始轨道分布的抽样，不是每一步随机抽取一次遭遇。
 
-其最核心的数学结构是
+模拟由三个互相独立的层次组成：
 
-$$
-\boxed{
-\text{某环境中的并合概率}
-\times
-\text{该环境中的真实双星数}
-=
-\text{该环境贡献的并合数}
-}
-$$
+1. halo 层：给出双星所处的密度、速度和硬双星边界；
+2. 轨道层：求解散射硬化与 GW 反作用下的 $(a,e)$；
+3. 人口层：说明哪些轨道属于今天这一批活着的双星，以及每条样本代表多少个物理系统。
 
-因此，“每个壳层都模拟同样多的双星”只是为了控制 Monte Carlo 误差，绝不表示各壳层真实双星数相同。
+A/B 的根本差别在第三层。
 
----
-
-## 2. 模拟对象与没有模拟的对象
-
-### 2.1 被模拟的对象
-
-论文跟踪单个 PBH 双星的两个轨道变量：
-
-$$
-X=(a,e),
-$$
-
-其中 $a$ 是半长轴，$e$ 是偏心率。每个样本还附带以下环境标签：
-
-$$
-(M_0,t_k,z_k,i),
-$$
-
-分别表示该 halo 的今天质量、当前时间/红移以及所在壳层编号。
-
-论文生产计算采用单色 PBH 质量：
-
-$$
-m_1=m_2=m=30\,M_\odot.
-$$
-
-等质量假设使交换相互作用不需要单独处理。论文也把 binary-binary 相互作用近似为“较硬的双星与最近一个 PBH”的 binary-single 相互作用。
-
-### 2.2 没有被直接模拟的内容
-
-以下过程没有通过逐次散射或 $N$-体动力学显式求解：
-
-- 每一次三体接近的冲量、入射参数和散射角；
-- halo 内 PBH 的离散相空间分布；
-- 壳层之间的径向迁移；
-- 双星被踢出 halo 后的继续演化；
-- 双星总体因并合、解体或逃逸造成的自洽耗尽；
-- binary-binary 的四体动力学。
-
-这些效应被平滑的 NFW 背景、经验硬化系数 $H,K$ 和若干近似取代。论文明确忽略 PBH 逃逸，因此低质量 halo 的并合率可能被高估。
-
----
-
-## 3. 输入层：开始模拟前必须具备什么
-
-模拟输入可分为五层。
-
-| 输入层 | 主要变量 | 作用 |
+| 问题 | 方案 A：独立时间片 | 方案 B：cohort 继承 |
 |---|---|---|
-| 宇宙学 | $H_0,\Omega_m,\rho_{\rm crit}(z)$，时间—红移关系 | 把红移轨迹转换成可积分的时间网格，并定义 virial 量 |
-| halo 演化 | $M_0,M(z),C(M,z),R_{\rm vir}(z)$ | 建立随时间变化的 NFW halo |
-| 空间离散 | $N_{\rm shell},R_i(t)$ | 将 halo 分解成若干固定编号、边界随时间变化的层 |
-| PBH 总体 | $m,f_{\rm PBH},f_{\rm binary},f_{\rm single}$ | 决定环境密度和各壳层真实双星数 |
-| 双星初态与积分参数 | $P(a,j),N_{\rm sample},\Delta t,\delta t$ | 生成 Monte Carlo 样本并演化轨道 |
+| 第 $k$ 片的输入 | 每片重新抽取原初分布 | 上片存活者 + 本边界新入晕者 |
+| 旧存活者的 $(a,e)$ | 不传给下一片 | 原样继承上一片终态 |
+| 已并合者 | 仅在本批次中停止；下一片重新抽样 | 永久从同一人口历史退出 |
+| 新增质量 | 隐含在当前完整人口乘数内 | 明确对应新的供给 cohort |
+| 物理权重 | 本片完整壳人口 / 本片样本数 | cohort 原初供给 / 该 cohort 原始抽样数 |
+| 主要估计对象 | 原初初态在某环境、某时窗中的并合概率 | 随时间供给、演化、耗尽的人口事件流 |
+| 软双星 | 不进入既有硬双星演化，贡献零计数 | 保留人口和纯 GW 演化，不做环境硬化 |
+| 实现入口 | run_raw_shell_monte_carlo | run_cohort_shell_monte_carlo |
 
-### 3.1 halo 质量吸积史
+论文明确给出每壳每步抽样并筛选硬双星，但未公开足以唯一重建 cohort 供给与存活者继承的规则。A 是项目对公开文字的一种实现；B 是已获授权的人口演化扩展。二者均不能冒称作者源码已确认。
 
-论文使用
+**物理上，B 不只是把 A 的随机种子固定，或把上一片计数保留下来；它必须同时继承轨道状态、人口权重和存活身份。**
 
-$$
-M(z)=M_0(1+z)^\alpha e^{\beta z},
-\tag{31}
-$$
+## 2. 符号、时钟与物理人口
 
-其中 $M_0=M(z=0)$，而 $\alpha,\beta$ 由附录 C 的吸积史拟合确定。逻辑顺序必须是
+### 2.1 四种不能混用的时间
 
-$$
-M_0
-\longrightarrow M(z)
-\longrightarrow C[M(z),z]
-\longrightarrow R_{\rm vir}(z),r_s(z),\rho_s(z).
-$$
-
-不能把 $z=0$ 的 halo 结构参数直接用于所有红移。
-
-论文在这里采用 Ludlow16 浓度模型。工程上可以把浓度/吸积史做成通用接口，但替换为 Prada12-HMF 后得到的是“项目基线结果”，不是严格的论文原设结果。
-
-### 3.2 起始红移
-
-论文脚注给出的规则是：
-
-- 今天质量 $M_0\gtrsim5\times10^4M_\odot$ 的 halo 从 $z=12$ 开始；
-- 更小的 halo 从较低红移开始，以保证任一时刻 halo 中至少约有 30 个 PBH。
-
-从 $z=12$ 到 $z=0$ 约对应 13.4 Gyr。这里“至少约 30 个 PBH”是低质量端的数值适用性限制，不是新的物理形成阈值。
-
-### 3.3 PBH 比例
-
-第 IV 节的基准计算取 $f_{\rm PBH}=1$，并设置
+令 $t$ 表示宇宙年龄，时间边界为
 
 $$
-f_{\rm binary}=f_{\rm single}=0.5,
-\qquad
-f_{\rm binary}+f_{\rm single}=1.
+t_0<t_1<\cdots<t_K=t(z=0),\qquad z_0>z_1>\cdots>z_K=0.
 $$
 
-论文把双星 PBH 与单体 PBH 的质量密度相加作为散射环境：
+定义：
 
 $$
-\rho_{\rm env}
-=\rho_{\rm PBH,binary}+\rho_{\rm PBH,single}
-=\rho_{\rm NFW}.
-\tag{21}
+\Delta t_k=t_{k+1}-t_k,\qquad
+T_k=t_k-t_0,\qquad
+t_{\rm lookback}=t_K-t.
 $$
 
-宽双星在环境密度中被当成两个独立 PBH。这里的 $f_{\rm binary}$ 是论文的总体比例设定；从质量比例换算成“真实双星系统数”时还必须除以每个系统的总质量 $2m$。
+这里 $T$ 是模拟已经运行多久，lookback 是距离今天多久，二者方向相反。另有双星的形成年龄 $t_{\rm f}$、入晕年龄 $t_c$，以及某次积分调用内部从零开始的局部时钟 $\tau$。
 
----
+因此入晕前老化时长是 $t_c-t_{\rm f}$，绝不是 $t_c-t_0$。特别地，从 $z=12$ 开始模拟不意味着双星在 $z=12$ 才形成。
 
-## 4. halo 的层级划分与局部环境
+当前宇宙学时间映射采用平直物质+$\Lambda$ 背景：
 
-### 4.1 壳层数量
+$$
+t(z)=\frac{2}{3H_0\sqrt{\Omega_\Lambda}}
+\operatorname{asinh}
+\left[\sqrt{\frac{\Omega_\Lambda}{\Omega_m}}(1+z)^{-3/2}\right].
+$$
 
-论文采用分质量档的空间分辨率：
+$z\le12$ 的环境网格未加入辐射项。默认 $t_{\rm f}=0$ 是“非常早形成”的时间零近似，不是用这个低红移近似精确计算物质—辐射相等时刻。
 
-| halo 质量档 | 空间划分 |
-|---|---:|
-| $mathcal O(10^3M_\odot)$ | 1 个球体 |
-| $mathcal O(10^4M_\odot)$ | 1 个内球 + 1 个外壳，共 2 层 |
-| $mathcal O(10^5M_\odot)$ | 1 个内球 + 2 个外壳，共 3 层 |
-| $mathcal O(10^6M_\odot)$ | 5 层 |
-| $M\gtrsim10^7M_\odot$ | 10 层 |
+### 2.2 轨道、标签与样本权重
 
-论文正文没有一句话直接写“壳层数由 $z=0$ 的质量 $M_0$ 决定”。不过附录 E 的表 III 中，$M_0=10^6M_\odot$ 的轨迹在 $z=8$ 已降到 $M(z)=7.3\times10^4M_\odot$，表中仍然沿用 5 层。由此可判断论文的实际组织方式是：
+轨道状态为
+
+$$
+x=(a,e),\qquad j=\sqrt{1-e^2}.
+$$
+
+对 B 的一个示踪样本，还需保存
+
+$$
+(x_{\ell,k},w_\ell,i,c_\ell),
+$$
+
+其中 $i$ 是壳编号，$c_\ell$ 是入晕边界编号，$w_\ell$ 是这条轨道代表的真实双星系统数。cohort 指同一壳层、同一入晕边界产生的一组示踪样本。
+
+$w_\ell$ 可以小于 1，也可以不是整数。它不是黑洞质量，也不是某个双星并合的概率，而是统计测度的系统数权重。模拟 20,000 条轨道并不表示 halo 内真的有 20,000 个双星。
+
+当前模型为 $m_1=m_2=30M_\odot$。虽然参数名称保留两质量，现有 $K$ 和轨道入口只支持等质量，不能直接宣称已支持一般质量比。
+
+### 2.3 质量比例与系统数
+
+定义 $f_{\rm PBH}$ 为总 PBH 质量份额，$f_b$ 为其中初始处于双星的质量份额。基线为
+
+$$
+f_{\rm PBH}=1,\qquad f_b=f_s=0.5.
+$$
+
+质量 $M$ 所对应的原初双星系统预算为
+
+$$
+N_{\rm prog}(M)=\eta_bM,\qquad
+\eta_b\equiv\frac{f_{\rm PBH}f_b}{m_1+m_2}.
+$$
+
+分母是双星总质量，不是单颗 PBH 的质量。对 $M_0=1.5\times10^6M_\odot$，预算为 12,500 个原初系统。
+
+A 将 $\eta_bM_i(t_k)$ 每片用作完整人口归一化。B 则把它解释为原初供给预算，后续存活数可以降低；B 不把耗尽人口重新补到固定 50%。
+
+## 3. 从吸积史到壳层环境
+
+### 3.1 固定轨迹标签与演化结构
+
+$M_0$ 始终指今天的质量；沿该轨迹使用论文式 (31) 的形式
+
+$$
+M(z\mid M_0)=M_0(1+z)^{\alpha_{\rm MAH}}e^{\beta_{\rm MAH}z}.
+$$
+
+下标用于避免与初态分布中的 $\alpha=0.1$ 混淆。数据流为
+
+$$
+M_0\longrightarrow M(z)\longrightarrow C[M(z),z]
+\longrightarrow R_{\rm vir},r_s,\rho_s.
+$$
+
+论文第 IV 节采用 Ludlow16。项目默认模型名为 prada12_hmf_sigma，即 Prada12-HMF 浓度/吸积史接口。更换它是明确的模型替换，不是论文原设。
+
+采用 NFW：
+
+$$
+\rho(r)=\frac{\rho_s}{x_r(1+x_r)^2},\quad x_r=\frac r{r_s},\quad
+M(<r)=4\pi\rho_sr_s^3
+\left[\ln(1+x_r)-\frac{x_r}{1+x_r}\right].
+$$
+
+### 3.2 起点和分层
+
+默认请求 $z_{\rm start}=12$；若
+
+$$
+N_{\rm PBH}(z_{\rm start})=\frac{f_{\rm PBH}M(z_{\rm start})}{m}<30,
+$$
+
+则沿单调吸积史降低起始红移，求达到约 30 个 PBH 的边界。这个阈值针对整个 halo，不是每壳或每批 Monte Carlo 样本。
+
+质量档约为 $10^3,10^4,10^5,10^6,\gtrsim10^7M_\odot$ 时，论文采用 1、2、3、5、10 层。当前实现沿一条 $M_0$ 轨迹固定层数；正文没有明确一句“按今天质量选层数”，该解释得到附录 E/Table III 跨红移保留层数的支持，仍应标为实现推断。动态改变层数需要额外的壳映射与人口输运算法，当前没有。
+
+统一用壳编号 $i=1,\ldots,N_s$，其边界为 $R_{i-1},R_i$。式 (27) 的量纲明确写法为
+
+$$
+R_i=
+\left\{\exp\left[\frac{i}{N_s}
+\ln\left(1+\frac{R_{\rm vir}}{\mathrm{pc}}\right)\right]-1\right\}\mathrm{pc}.
+$$
+
+壳编号固定不意味着半径、密度和速度固定。
+
+### 3.3 局部密度、总质量和速度评价半径
+
+式 (28) 的密度在径向算术中点评价：
+
+$$
+r_{\rho,i}=\frac{R_{i-1}+R_i}{2},\qquad
+\rho_{{\rm env},i}=\xi\,\rho_{\rm NFW}(r_{\rho,i}).
+$$
+
+代码的 ksi 对应 $\xi$，默认 1。它只缩放散射环境，不改变 halo 质量或 NFW 剖面。代码不会因改变 $f_{\rm PBH}$ 自动同步改变 ksi；非默认比例需要另行规定物理一致的环境模型。
+
+系统预算使用积分壳质量：
+
+$$
+M_i=M(<R_i)-M(<R_{i-1}),
+$$
+
+不是把中点密度乘壳体积。一个量进入局部轨道 RHS，另一个决定人口供给，两者不能互换。
+
+当前代码采用
+
+$$
+v_i=\sqrt{\mu\,\frac{GM(<r_{v,i})}{r_{v,i}}},\qquad
+a_{h,i}=\frac{Gm_1}{4v_i^2}.
+$$
+
+必须同时交代两个独立选择：
+
+- 论文印刷式 (24) 的系数为 $\mu=2$；项目默认 $\mu=0.5$，与既有表格诊断更相符。
+- 当前单层模型取 $r_{v,1}=R_{\rm vir}/2$；多层模型取各壳外边界 $r_{v,i}=R_i$。这不是论文明确规定的“密度和速度都在中点”，也不能把 Table III 的数值支持当成原文直接表述。
+
+因此旧文档将两种评价半径统一为中点并不准确。本次只校正文档，不改变环境实现。
+
+## 4. 原初初态：严格联合分布如何归一化
+
+### 4.1 分布定义
+
+令 $f=f_{\rm PBH}$，附录 D 的量为
+
+$$
+\bar x=\left(\frac{3m}{4\pi f\rho_{\rm eq}}\right)^{1/3},\qquad
+x(a)=\left(\frac{3am}{4\pi\alpha\rho_{\rm eq}}\right)^{1/4},
+\qquad \alpha=0.1,
+$$
+
+$$
+s(a)=\frac12\sqrt{1+\frac{\sigma_{\rm eq}^2}{f^2}}
+\left[\frac{x(a)}{\bar x}\right]^3,\qquad
+q(j;a)=\frac{(j/s)^2}{j[1+(j/s)^2]^{3/2}}.
+$$
+
+把印刷联合密度记作
+
+$$
+Q(a,j)=B(a)q(j;a),
+$$
+
+$$
+B(a)=\frac34a^{-1/4}
+\left(\frac f{\alpha\bar x}\right)^{3/4}
+\exp\left[-\left(\frac{x(a)}{\bar x}\right)^3\right].
+$$
+
+当前选取矩形区域
+$\mathcal D=\{a_{\min}\le a\le a_{\max},\,0<j<1\}$，
+默认 $a_{\min}=10^{-6}$ pc、$a_{\max}=1$ pc。
+
+注意 $q(j;a)$ 依赖 $a$，不能当成与半长轴无关的统一 $j$ 先验。
+
+### 4.2 整体截断归一化，而非改变边缘权重
+
+首先计算
+
+$$
+L(a)=\int_0^1q(j;a)\,dj
+=1-\frac1{\sqrt{1+s(a)^{-2}}},
+$$
+
+$$
+Z=\int_{a_{\min}}^{a_{\max}}B(a)L(a)\,da.
+$$
+
+严格的有限域分布为
+
+$$
+p_0(a,j)=\frac{Q(a,j)}Z,\quad
+p_a(a)=\frac{B(a)L(a)}Z,\quad
+p(j\mid a)=\frac{q(j;a)}{L(a)}.
+$$
+
+先按 $p_a$ 抽 $a$，再按条件分布抽 $j$，联合律正好是 $p_0$。遗漏 $p_a$ 中的 $L(a)$ 会改变不同半长轴的相对权重。
+
+条件 CDF 与逆变换为
+
+$$
+F(j\mid a)=\frac{1-[1+(j/s)^2]^{-1/2}}{L(a)},\qquad
+j=s(a)\sqrt{[1-uL(a)]^{-2}-1},\quad u\sim U(0,1).
+$$
+
+最后用 $e=\sqrt{1-j^2}$ 转换。代码以几何间隔的 $a$ 网格构造 CDF，但积分测度仍是 $da$；对数数值网格不等于物理上均匀抽取 $\log a$。
+
+若用 $(a,e)$ 写概率密度，则
+
+$$
+p_{0,ae}(a,e)=p_0(a,\sqrt{1-e^2})\frac{e}{\sqrt{1-e^2}}.
+$$
+
+直接变换随机样本时不需要再乘 Jacobian；只有把密度换变量时才需要。
+
+### 4.3 与 Fig.19 复现口径的区别
+
+论文附录文字描述先 $j$ 后 $a$，但第一步所需尺度和归一化并不完整。项目的 sample_figure19_orbital_parameters 使用原图反推的有效尺度，是独立的经验复现分支。
+
+数学上，抽样次序本身不是对错标准；正确的反向分解 $p_j(j)p(a\mid j)$ 也能给出同一联合律。真正要检查的是边缘分布、条件分布、截断和尺度是否一致。
+
+A/B 本次都默认使用 AppendixDOrbitalDistribution 严格联合分布。有限域外人口没有自动单列计入损失：$\eta_bM$ 被赋予这个已归一化的模型分布。若以后把截断区外系统纳入真实人口，需同时重定义分布和人口预算，不能仅扩大画图范围。
+
+## 5. 单轨道方程与两类数值推进
+
+### 5.1 共同物理 RHS
+
+在冻结环境中，记
+
+$$
+\mathcal A_i(a)=\frac{GH(a/a_{h,i})\rho_{{\rm env},i}}{v_i},\qquad
+\mathcal B=\frac{64}{5}\frac{G^3m_1m_2(m_1+m_2)}{c^5}.
+$$
+
+原文式 (19)–(26) 为
+
+$$
+\dot a=-\mathcal A_i(a)a^2-\frac{\mathcal B}{a^3}F(e),
+$$
+
+$$
+\dot e=\mathcal A_i(a)K(a,e)a
+-\frac{19}{12}\frac{\mathcal B}{a^4}D(e),
+$$
+
+$$
+F(e)=\frac{1+73e^2/24+37e^4/96}{(1-e^2)^{7/2}},
+\quad
+D(e)=\frac{e(1+121e^2/304)}{(1-e^2)^{5/2}},
+$$
+
+$$
+H=14.55\left(1+0.287\,\frac a{a_h}\right)^{-0.95}.
+$$
+
+$\mathcal A$ 的量纲为长度$^{-1}$时间$^{-1}$，$\mathcal B$ 为长度$^4$/时间。公开接口以 pc、Myr、$M_\odot$、km/s 接收参数，RHS 内部做 SI 换算，再返回 pc/Myr 与 Myr$^{-1}$。
+
+环境散射将双星结合能转移给来访天体，使 $a$ 缩小；其对 $e$ 的改变由 $K$ 决定。GW 发射使轨道收缩并趋于圆化。比较
+
+$$
+t_{a,3b}=\frac1{\mathcal A a},\qquad
+t_{a,\rm GW}=\frac{a^4}{\mathcal B F(e)}
+$$
+
+可以判断局部主导项，但这两个是瞬时收缩时间，不等于完整并合时间。例如圆轨道纯 GW 的零半径并合时长为 $a_0^4/(4\mathcal B)$。
+
+### 5.2 $K$ 已实现：拟合、插值和适用边界
+
+Sesana、Haardt & Madau 的 [2006 年原始研究](https://arxiv.org/abs/astro-ph/0604299) 是固定恒星背景中的大质量黑洞双星散射实验，不是等质量 PBH 三体总体的直接标定。
+
+当前代码按其式 (18)、Table 3 的等质量双星分支使用
+
+$$
+K_r(a)=A_r\left(1+\frac{a/a_h}{b_r}\right)^{\gamma_r}+B_r.
+$$
+
+这里 $b_r$ 是原表 $a_0/a_h$，不是原初双星半长轴。
+
+| 标定偏心率 $e_r$ | $A_r$ | $b_r$ | $\gamma_r$ | $B_r$ |
+|---:|---:|---:|---:|---:|
+| 0.15 | 0.037 | 0.339 | −3.335 | −0.012 |
+| 0.30 | 0.075 | 0.151 | −1.548 | −0.008 |
+| 0.45 | 0.105 | 0.088 | −0.893 | −0.005 |
+| 0.60 | 0.121 | 0.090 | −0.895 | −0.008 |
+| 0.75 | 0.134 | 0.064 | −0.544 | −0.006 |
+| 0.90 | 0.082 | 0.085 | −0.663 | −0.004 |
+
+项目添加 $K(a,0)=0$ 节点，并按当前偏心率在线性区间内插值的是 $K$ 值：
+
+$$
+K(a,e)=(1-\theta)K_r(a)+\theta K_{r+1}(a),\qquad
+\theta=\frac{e-e_r}{e_{r+1}-e_r}.
+$$
+
+默认 sesana_endpoint 在 $e>0.9$ 使用 $e=0.9$ 的值；sesana_taper 在高偏心率额外乘 $(1-e^2)/(1-0.9^2)$，只是敏感性分支；zero 令 $K=0$。zero 本身并不关闭 $\dot a$ 的三体项，纯 GW 对照还必须关闭环境密度。
+
+这些规则区分三种不确定性：原表只有离散初始 $e$、使用当前 $e$ 的插值是项目闭合、高 $e$ 端点延用是标定外外推。双星质量比为 1 也不意味着原研究的轻场星与双星成员等质量。移用于三颗约 $30M_\odot$ PBH 是目标论文沿用的外推，不能说已获得该场景的精确散射校准。
+
+### 5.3 环境步与 Euler 局部步
+
+论文使用 $\Delta t_{\rm halo}=200$ Myr、$\delta t_{\rm orbit}=2$ Myr。每片更新 halo 一次，片内重新计算依赖当前轨道的 $H,K$，但不连续更新环境。
+
+Euler 同时从旧状态计算
+
+$$
+a_{n+1}=a_n+\delta t\,f_a(a_n,e_n),\qquad
+e_{n+1}=e_n+\delta t\,f_e(a_n,e_n).
+$$
+
+当前 Euler 分支把有限 RHS 导致的 $a_{n+1}\le0$ 视作并合，并以步内线性插值估计时刻；非有限值或未并合轨道的 $e\notin[0,1)$ 记为数值失效。该越界规则是项目定义，不是原文公开的精确终点算法。
+
+A 最后不足一个环境步时使用真实剩余片长；Euler 会相应调整局部等分步。B 当前明确只接受 Adaptive。全局/局部配置可替换不等于每个驱动入口已支持任意积分器。
+
+### 5.4 Adaptive 的数学变量变换
+
+当前默认使用 adaptive_log_a。对每次单片调用，以该调用起始半长轴 $a_{\rm ref}$ 定义
+
+$$
+u=\ln\frac{a_{\rm ref}}a,\qquad y=\ln(1-e^2).
+$$
+
+因为 $\dot a<0$，$u$ 单调增加。令
+
+$$
+\lambda=-\frac{\dot a}a
+=\mathcal A a+\frac{\mathcal B}{a^4}F(e)>0.
+$$
+
+则等价 ODE 为
+
+$$
+\frac{d\tau}{du}=\frac1\lambda,\qquad
+\frac{dy}{du}
+=-\frac{2e}{1-e^2}\frac{\dot e}{\lambda}.
+$$
+
+恢复关系为 $a=a_{\rm ref}e^{-u}$、$e=\sqrt{1-e^y}$。小 $a$、高 $e$ 的快速 GW 演化被转成较易控制的收缩坐标；实现以对数形式组合大项，减少浮点溢出。
+
+积分采用逐轨道独立步长、批量向量化的 Dormand–Prince 5(4)，接受步由相对/绝对容差控制，时间边界用稠密输出定位。默认 rtol 为 $10^{-6}$，最大 $\Delta u=0.25$；遗留 local_timestep_myr=2 不代表 Adaptive 的实际步长。
+
+终止于 $\tau=\Delta t_k$ 或
+
+$$
+a=a_{\rm stop}=\chi\frac{G(m_1+m_2)}{c^2},\qquad \chi=6.
+$$
+
+后者是有限数值吸收边界，不是对偏心轨道精确 GR 并合/分离界的声明，也不是原文指定值。返回 $a=0$ 只是事件标记。拒绝非物理试探步不等于把已接受轨道随意钳位到物理区间。
+
+跨片重新定义 $u=0$ 只是重置积分坐标；只要传入上片终态 $(a,e)$，就没有重置物理轨道。
+
+## 6. 方案 A：独立窗口概率估计器
+
+对每壳每片独立抽取 $x_\ell\sim p_0$。定义事件指示量
+
+$$
+I_{i,k}(x)=
+\mathbf1[a\le a_{h,i,k}]
+\mathbf1[\text{在冻结环境 }E_{i,k}\text{ 内于 }\Delta t_k\text{ 并合}].
+$$
+
+A 的数学对象是
+
+$$
+p_{i,k}^{A}=\int I_{i,k}(x)\,p_0(dx),\qquad
+\hat p_{i,k}^{A}=\frac1{n_{i,k}}\sum_{\ell=1}^{n_{i,k}}I_{i,k}(x_\ell).
+$$
+
+硬筛掉的样本仍在分母中，因此这里不是“给定硬双星条件下的并合概率”。
+
+按式 (32) 的逐时间片解释，
+
+$$
+D_{i,k}^{A}=\eta_bM_{i,k}\hat p_{i,k}^{A},\qquad
+R_{A,k}=\sum_i\frac{D_{i,k}^{A}}{10^6\Delta t_k}
+$$
+
+得到每年每 halo 的率，其中 $\Delta t_k$ 以 Myr 表示。
+
+物理含义是：“若这一时刻的完整壳层人口都服从同一原初分布，在接下来这个环境窗口会有多少并合？”它不是自动构造“过去已演化至今的幸存人口”。
+
+若短 GW 寿命尾部在每个窗口重新出现，而 halo 质量随时间增长，就可能有
+
+$$
+R_A(t)\sim \eta_bM(t)\frac{F_{\rm prompt}(\Delta t)}{\Delta t},
+$$
+
+即使环境项很弱，也会出现低红移率抬升。独立样本不是同一数值对象被计数两次，但赋予它们的物理人口解释重复补入了本应耗尽的短寿命系统。
+
+因此 A 保留为论文描述对照和条件窗口实验；B 用来明确处理另一种人口历史。不能仅靠换采样器、调浓度模型或把率减去 GW-only，就声称解决了人口继承问题。
+
+## 7. 方案 B：从新增质量到守恒 cohort 的逐步推导
+
+### 7.1 第一步：为每个壳定义原初供给
+
+构造每个边界的壳质量 $M_{i,k}$，取
+
+$$
+\Delta M_{i,0}=M_{i,0},\qquad
+\Delta M_{i,k}=M_{i,k}-M_{i,k-1}\quad(k\ge1),
+$$
+
+$$
+Q_{i,k}=\eta_b\Delta M_{i,k}.
+$$
+
+$Q$ 是“随这部分物质而来的原初双星系统预算”，还不是活着入晕的系统数。第零 cohort 包含起始 halo 的全部初始预算；后续只对新增质量分配新权重。
+
+于是
+
+$$
+\sum_{c=0}^kQ_{i,c}=\eta_bM_{i,k}.
+$$
+
+这利用了质量增量的望远镜求和，而不是每片都供给 $\eta_bM_{i,k}$。
+
+当前实现要求各壳 $M_{i,k}$ 单调增长，显著负增量报错，仅对容许范围内浮点舍入的小负值归零。不能将负增量取绝对值；若壳间发生质量转移，应建立输运模型。
+
+**物理限制：**变化的 Eulerian 壳质量可含边界运动、结构重排和真实吸积。把所有正增量视为“从晕外直接进入此壳的新人口”是当前闭合假设，不是从 NFW 密度唯一推导出的入流动力学。固定壳编号也不等于真实拉格朗日物质壳。
+
+### 7.2 第二步：抽原初轨道并一次性赋权
+
+第 $c$ 个 cohort 抽取
+
+$$
+x_{ic\ell}^{\rm f}\sim p_0,\qquad \ell=1,\ldots,n_{ic},\qquad
+w_{ic}=\frac{Q_{i,c}}{n_{ic}}.
+$$
+
+同 cohort 内权重相同，不同 cohort 的权重一般不同。初始和后续供给样本量分别由 initial_samples_per_shell、accretion_samples_per_shell 控制，与 A 每片样本量不是同一参数。
+
+该权重在形成时就代表一组原初系统；经过老化、并合、入晕后，个体权重不再改变。增加示踪样本数会降低单条权重而不增加真实人口。
+
+### 7.3 第三步：入晕前的 GW 老化和选择效应
+
+令 $\Phi_{\rm GW}^{s}(x)$ 为关闭环境项后，纯 GW 演化时长 $s$ 的流；令 $T_{\rm GW}(x)$ 为到达同一吸收边界的寿命。
+
+默认 gw_aged 对 cohort $c$ 定义
+
+$$
+A_{ic\ell}^{\rm out}
+=\mathbf1[T_{\rm GW}(x_{ic\ell}^{\rm f})>t_c-t_{\rm f}].
+$$
+
+活着入晕时的轨道为
+
+$$
+x_{ic\ell}^{\rm ent}
+=\Phi_{\rm GW}^{\,t_c-t_{\rm f}}(x_{ic\ell}^{\rm f}),
+\quad \text{仅对 }A_{ic\ell}^{\rm out}=1.
+$$
+
+晕外已并合权重与活着入晕权重分别为
+
+$$
+O_{i,c}=w_{ic}\sum_\ell(1-A_{ic\ell}^{\rm out}),\qquad
+E_{i,c}=w_{ic}\sum_\ell A_{ic\ell}^{\rm out},
+$$
+
+因此逐 cohort 精确满足
+
+$$
+Q_{i,c}=O_{i,c}+E_{i,c}.
+$$
+
+晕外死亡只进入独立账本，不计入当前 halo 的晕内率；它属于这份后来被吸积物质的原初系统历史，并不表示事件发生时已在这个 halo 内。
+
+入晕前无环境扰动不等于完全不演化：孤立双星仍辐射 GW。默认 B 显式加入这一过程，而目标论文关于入晕初态保持原分布的设定没有这样更新。
+
+代码没有维护一个覆盖全宇宙的有限“晕外轨道仓库”；它在每个入晕边界按需抽取该 cohort 的原初轨道，再独立推进到入晕年龄。其含义是不同物质增量代表互不重复的统计子人口，并假定原初轨道与被吸积时间独立。若入流选择与轨道、宿主或空间位置相关，这个入口模型必须改变。
+
+### 7.4 为什么不能把入晕存活者重新归一化到 $Q$
+
+定义
+
+$$
+S_{\rm out}(t_c)=\int p_0(dx)\,
+\mathbf1[T_{\rm GW}(x)>t_c-t_{\rm f}].
+$$
+
+真实入晕分布同时包含两件事：其总质量/系统数为 $Q_{i,c}S_{\rm out}$，其条件轨道分布是演化后幸存者的分布。不能只保留条件分布，却把总人口重新恢复为 $Q_{i,c}$。
+
+对任意轨道区域 $\mathcal U$，入口的系统数测度为
+
+$$
+\nu_{i,c}^{\rm ent}(\mathcal U)
+=Q_{i,c}\int p_0(dx)\,
+\mathbf1[T_{\rm GW}(x)>t_c-t_{\rm f}]
+\mathbf1[\Phi_{\rm GW}^{t_c-t_{\rm f}}(x)\in\mathcal U].
+$$
+
+其积分是 $Q_{i,c}S_{\rm out}$，不是 $Q_{i,c}$。代码通过保持每条原始权重 $Q/n$、删除死亡者自然实现该式。
+
+例如供给 100 个原初系统，抽 1,000 条轨道，每条权重 0.1。若 80 条在晕外已并合，则 $O=8$、$E=92$。留下 920 条仍各重 0.1，不能改成 $100/920$，否则会把已经死亡的 8 个系统“补活”。
+
+pristine 对照则人为令 $S_{\rm out}=1$、入口映射为恒等映射：$O=0$、$E=Q$。它保留 B 的继承算法，只关闭新入口的老化，用来隔离两个不同机制。
+
+### 7.5 第四步：先加入入口，再推进本片
+
+定义 $\mathcal P_{i,k}$ 为边界 $t_k$ **完成新人口注入后、尚未推进第 $k$ 片**的活轨道集合。系统数为
+
+$$
+N_{i,k}^{\rm alive}=\sum_{\ell\in\mathcal P_{i,k}}w_\ell.
+$$
+
+片首为每条活轨道计算硬标记
+
+$$
+h_{\ell,k}=\mathbf1[a_{\ell,k}\le a_{h,i,k}].
+$$
+
+当前 B 的推进规则为
+
+$$
+\dot a=h_{\ell,k}\dot a_{3b}+\dot a_{\rm GW},\qquad
+\dot e=h_{\ell,k}\dot e_{3b}+\dot e_{\rm GW}.
+$$
+
+$h$ 在本片按片首分类固定；下一片重新根据新环境和演化后轨道判断。软双星仍保留且做 GW 演化。若它在片内因 GW 缩小而跨过 $a_h$，当前实现不会立即开启环境项，而是在下个边界重新分类；这是全局时间离散带来的额外近似。
+
+软双星不做硬化不等于已经实现软双星离解。当前没有离解、反冲或逃逸事件，不能把软态简单理解为死亡。
+
+对本片定义
+
+$$
+d_{\ell,k}=\mathbf1[\text{在本片到达并合边界}],\qquad
+x'_{\ell,k}=\Phi_{i,k}^{\Delta t_k}(x_{\ell,k})
+$$
+
+（后式仅用于未并合者），则
+
+$$
+D_{i,k}=\sum_{\ell\in\mathcal P_{i,k}}w_\ell d_{\ell,k},
+$$
+
+$$
+\mathcal P_{i,k+1}
+=
+\left\{(x'_{\ell,k},w_\ell,c_\ell):d_{\ell,k}=0\right\}
+\;\cup\;\mathcal E_{i,k+1}.
+$$
+
+$\mathcal E$ 是下一边界活着入晕的新 cohort。并合者永久退出，旧存活者不重抽、不改权、不丢失 cohort 身份。当前如出现数值失效则中止报告错误，不把它静默归入并合或存活。
+
+### 7.6 第五步：推导人口守恒账本
+
+从上一式立刻得到
+
+$$
+N_{i,k+1}^{\rm alive}
+=N_{i,k}^{\rm alive}-D_{i,k}+E_{i,k+1}.
+$$
+
+如需写成存活比例，令
+$s_{i,k}=1-D_{i,k}/N_{i,k}^{\rm alive}$（人口非零时），则
+
+$$
+N_{i,k+1}^{\rm alive}
+=s_{i,k}N_{i,k}^{\rm alive}+E_{i,k+1}.
+$$
+
+这里必须用**权重比例**，一般不是原始轨道存活数量的比例。两 cohort 的单条权重不同，直接计个数会错估人口。
+
+由 $N_{i,0}^{\rm alive}=E_{i,0}$ 及 $Q=O+E$ 递推，
 
 $$
 \boxed{
-N_{\rm shell}\text{ 沿一条 }M_0\text{ 轨迹固定，}
-\quad R_i(t)\text{ 随吸积史变化。}
-}
+\sum_{c=0}^{k}Q_{i,c}
+=
+\sum_{c=0}^{k}O_{i,c}
++\sum_{q=0}^{k-1}D_{i,q}
++N_{i,k}^{\rm alive}
+}.
 $$
 
-这属于**由表格反推的实现规则**，不是正文显式定义。若改成每个红移都按瞬时 $M(z)$ 重新选择壳层数，就会出现层的生成、合并以及样本/累计量如何映射的问题；论文没有给出这种动态重分层算法。
+注意边界 $k$ 的晕内累计只能加到 $k-1$，因为本片尚未推进。这对应 population_balance_residual 的准确数组索引。
 
-### 4.2 壳层边界
+沿所有壳求和、到最终边界得到
 
-对于 $N_{\rm shell}$ 个层，论文公式 (27) 使用对数式边界：
-
-$$
-R_i(t)=
-\left\{
-\exp\left[
-\frac{i}{N_{\rm shell}}
-\ln\left(1+\frac{R_{\rm vir}(t)}{1\,{\rm pc}}\right)
-\right]-1
-\right\}{\rm pc},
-\quad i=0,\ldots,N_{\rm shell}.
-\tag{27}
-$$
-
-所以 $R_0=0$，$R_{N_{\rm shell}}=R_{\rm vir}$。编号 $i$ 表示同一条质量轨迹中的层级身份，但其物理边界随 $R_{\rm vir}(t)$ 膨胀或收缩。
-
-以 $M_0=10^{12}M_\odot$ 为例，论文表 I 在 $z=0$ 给出约 $R_{\rm vir}=211$ kpc，并列出十层边界：
-
-$$
-0, 2.41, 10.61, 38.57, 133.83, 458.46, 1564.65,
-5334.13, 18179.03, 61949.37, 211101.44\ {\rm pc}.
-$$
-
-### 4.3 壳层代表点与密度
-
-论文不使用壳层体积平均密度，而是在几何中点处评价 NFW 局部密度：
-
-$$
-r_{i,\rm mid}(t)=\frac{R_i(t)+R_{i+1}(t)}{2},
-$$
-
-$$
-\rho_i(t)=
-\rho_{\rm NFW}\!\left[r_{i,\rm mid}(t),t\right].
-\tag{28}
-$$
-
-这是后续硬化率中的局部环境密度。与此同时，给样本重加权时需要的是壳层所含总质量：
-
-$$
-M_i(t)=M_{\rm NFW}(<R_{i+1},t)-M_{\rm NFW}(<R_i,t).
-$$
-
-后一个公式是**由 NFW 结构和“壳层真实双星数”直接推出的实现量**；论文没有把它单独编号，但如果用中点密度乘壳层体积代替，就不再是严格的 NFW 壳层质量。
-
-### 4.4 局部速度、硬双星边界
-
-论文公式 (24) 定义
-
-$$
-v_{{\rm disp},i}(t)
-=\sqrt{\frac{2G M(<r_{i,\rm mid},t)}{r_{i,\rm mid}(t)}}.
-\tag{24}
-$$
-
-当地硬双星边界为
-
-$$
-a_{h,i}(t)=\frac{Gm_1}{4v_{{\rm disp},i}^2(t)}.
-\tag{23}
-$$
-
-因此局部包围质量越大、速度越高，$a_h$ 越小，能够被视为硬双星的初始样本比例也越低。
-
-这里存在一个必须保留的论文内部复现问题：公式 (24) 明写的是 $\sqrt{2GM/r}$，但表 I 与表 III 的若干数值组合更接近 $\sqrt{GM/(2r)}$。后二者速度相差 2 倍，导致 $a_h$ 相差 4 倍。除非能从作者代码或补充材料确认，否则实现应提供明确的 velocity-convention 选项，并把公式分支与表格诊断分支分开，不能静默修改公式。
-
-### 4.5 环境更新时间
-
-halo 密度和速度每
-
-$$
-\Delta t=200\ {\rm Myr}
-$$
-
-更新一次。在一个全局时间片内部，$R_i,\rho_i,v_{{\rm disp},i},a_{h,i}$ 应视为冻结的背景；轨道则用更小步长演化。论文没有描述在 200 Myr 内对 halo 环境做插值。
-
-论文还假定双星在整个模拟中留在给定壳层，不做壳层间迁移。这里更准确的含义是保留壳层编号；由于 $R_i(t)$ 本身随 halo 演化，双星的代表半径也会随该编号的边界变化。
-
----
-
-## 5. 双星初始条件：从 $P(a,j)$ 到 $(a_0,e_0)$
-
-### 5.1 物理假设
-
-论文假定 PBH 双星在 halo 外已经形成并保持引力束缚，在进入 halo 前不受 halo 环境影响。进入某个 halo 时间片时，其初态仍服从物质—辐射相等时期得到的早期双星分布。
-
-定义无量纲角动量
-
-$$
-j=\sqrt{1-e^2},
-\qquad 0<j<1,
-$$
-
-以及平均 PBH 间距
-
-$$
-\bar x=
-\left(\frac{3m}{4\pi f\rho_{\rm eq}}\right)^{1/3}.
-$$
-
-附录 D 给出
-
-$$
-P(j)=\frac{y^2}{j(1+y^2)^{3/2}},
-$$
-
-$$
-y=\frac{j}
-{0.5\sqrt{1+\sigma_{\rm eq}^2/f^2}\,[x/\bar x]^3},
-$$
-
-以及联合分布
-
-$$
-P(a,j)=
-\frac{3}{4}a^{-1/4}
-\left(\frac{f}{\alpha\bar x}\right)^{3/4}
-P(j)
-\exp\left[-\left(\frac{x(a)}{\bar x}\right)^3\right],
-$$
-
-$$
-x(a)=
-\left(\frac{3am}{4\pi\alpha\rho_{\rm eq}}\right)^{1/4},
-\qquad \alpha=0.1.
-$$
-
-抽样后通过
-
-$$
-e_0=\sqrt{1-j_0^2}
-$$
-
-得到偏心率。
-
-### 5.2 抽样范围与论文的描述
-
-论文给出的半长轴抽样区间为
-
-$$
-10^{-6}\ {\rm pc}\le a\le1\ {
-m pc},
-$$
-
-并称使用逆抽样方法。附录文字描述的顺序是先抽 $j$，再由联合分布抽 $a$。但对于真正的联合分布，顺序抽样必须使用相应的边缘分布与条件分布，例如
-
-$$
-a\sim P_a(a),
-\qquad
-j\sim P(j\mid a),
-$$
-
-或等价的反向分解。只把联合密度直接当作第二个变量的一维密度，可能改变目标分布。
-
-因此本文档把两件事严格区分：
-
-- **论文原文算法**：按附录 D 的文字顺序复现，并记录其归一化方式；
-- **本项目严格联合抽样**：先抽边缘分布，再抽条件分布，用于数学上自洽的基线和对照。
-
-附录 D 的正文称示例抽取 $10^4$ 个样本，而图 19 图注写 $10^5$，两者也不一致。这个数量只是初始分布展示，不要与第 IV 节生产计算中每壳层、每时间片的 $2\times10^6$ 个样本混淆。
-
-### 5.3 硬双星筛选
-
-对每个壳层、每个全局时间片，样本进入轨道积分前必须满足
-
-$$
-a_0\le a_{h,i}(t_k).
-$$
-
-不满足条件的宽双星不进入该硬双星演化方程。Table II 给出的“硬双星百分比”正是初始分布通过这个局部阈值后的比例。它随 halo 质量、红移和壳层变化，不是一个全局常数。
-
-实现时必须同时保存：
-
-- 总抽样数 $N_{\rm sample}$；
-- 通过硬筛选的数量 $N_{\rm hard}$；
-- 实际并合数量 $N_{\rm merger}$。
-
-否则无法判断最终的并合比例分母究竟包含全部初始双星，还是只包含硬双星。公式 (32) 使用 $N_{\rm sample}$ 作分母，因此最稳妥的数据结构是让被筛掉的样本自然贡献零次并合，而不是把它们从分母中删除。
-
----
-
-## 6. 单个硬双星的演化方程
-
-### 6.1 半长轴演化
-
-论文公式 (19) 为
-
-$$
-\frac{da}{dt}
-=-
-\frac{GH\rho_{\rm env}}{v_{\rm disp}}a^2
--\frac{64}{5}
-\frac{G^3}{c^5a^3}
-(m_1+m_2)(m_1m_2)F(e),
-\tag{19}
-$$
-
-其中
-
-$$
-F(e)=
-\frac{1+\frac{73}{24}e^2+\frac{37}{96}e^4}
-{(1-e^2)^{7/2}}.
-\tag{20}
-$$
-
-第一项是平均化的三体硬化，第二项是 Peters 引力波反作用。两个项都使 $a$ 减小，但主导区域不同：
-
-- 较大的硬双星通常先由环境散射收缩；
-- $a$ 足够小或 $e$ 足够高后，$a^{-3}F(e)$ 使引力波项迅速接管；
-- 最终进入 runaway 式并合。
-
-硬化系数采用
-
-$$
-H=14.55\left(1+0.287\frac{a}{a_h}\right)^{-0.95}.
-\tag{22}
-$$
-
-由于 $H$ 依赖当前 $a/a_h$，即使环境在一个全局时间片中冻结，$H$ 仍应在每个局部积分步重新计算。
-
-### 6.2 偏心率演化
-
-论文公式 (25) 为
-
-$$
-\frac{de}{dt}
-=\frac{GHK\rho_{\rm env}}{v_{\rm disp}}a
--\frac{304}{15}
-\frac{G^3}{c^5a^4}
-(m_1+m_2)(m_1m_2)D(e),
-\tag{25}
-$$
-
-$$
-D(e)=
-\frac{e+\frac{121}{304}e^3}
-{(1-e^2)^{5/2}}.
-\tag{26}
-$$
-
-第一项描述 binary-single 散射对偏心率的平均改变；第二项描述引力波圆化。论文说 $K$ 取自 Sesana et al. (2006) 的公式 (18)，但目标论文本身没有重写其完整函数和插值实现。因此 $K$ 是代码实现前必须从原始参考文献补齐的外部输入，不能用一个未注明来源的常数代替。
-
-### 6.3 两条竞争时间尺度
-
-理解模拟的最好方式，是比较两个半长轴变化时间尺度：
-
-$$
-t_{\rm 3b}\sim
-\frac{a}{|\dot a_{\rm 3b}|}
-=\frac{v_{\rm disp}}
-{GH\rho_{\rm env}a},
-$$
-
-$$
-t_{\rm GW}\sim
-\frac{a}{|\dot a_{\rm GW}|}
-\propto
-\frac{a^4}{m_1m_2(m_1+m_2)F(e)}.
-$$
-
-三体硬化擅长把较宽的硬双星推向更小的 $a$，而引力波在小 $a$、高 $e$ 处变得极强。第 IV 节模拟的物理核心正是判断：**给定 halo 局部环境能否在有限宇宙时间内把一部分早期双星送入引力波主导区。**
-
-附录 E 另给出在 $a=a_h$ 附近的相互作用率估计：
-
-$$
-R_{3b}=\frac{2\pi Gm_T n(r,z)a}{v_{\rm disp}},
-$$
-
-等质量时 $m_T=3m$、$n=\rho_{\rm env}/m$，所以
-
 $$
-R_{3b}(a_h)=
-\frac{6\pi G\rho_{\rm NFW}a_h}{v_{\rm disp}},
-\qquad
-\tau_{3b}=R_{3b}^{-1}.
+\eta_bM_0=N_{\rm merged,outside}
++N_{\rm merged,inside}+N_{\rm alive}(t_K).
 $$
-
-这个量是环境有效性的诊断，不替代公式 (19)、(25) 的实际积分。
 
----
+它守恒的是“原初双星系统的去向预算”，不是全 halo 能量守恒或含 GW 辐射损失的精确质量守恒。并合后一个遗迹不再属于活双星，但仍可贡献 halo 总质量；当前背景没有因此自洽演化遗迹质量谱。
 
-## 7. 时间离散与数值积分
+接续第 7.4 节的数字例子，可以完整检查两片的物理含义：
 
-### 7.1 两级时间步
-
-论文采用：
-
-$$
-\Delta t_{\rm halo}=200\ {\rm Myr},
-\qquad
-\delta t_{\rm orbit}=2\ {\rm Myr}.
-$$
-
-因此每个 halo 时间片通常包含
-
-$$
-N_{\rm local}=\frac{200}{2}=100
-$$
+| 操作 | 示踪轨道变化 | 加权系统数变化 |
+|---|---|---|
+| 初始供给 100，晕外死亡 80 条 | 1,000 条各重 0.1，剩 920 条 | 晕外死亡 8，入晕存活 92 |
+| 第一片并合 20 条旧轨道 | 剩 900 条旧轨道 | 晕内死亡 2，存活 90 |
+| 下一边界新增供给 20，抽 100 条 | 新轨道各重 0.2，其中 10 条晕外死亡 | 新晕外死亡 2，活着入晕 18，总存活 108 |
+| 第二片并合 10 条旧轨道及 5 条新轨道 | 原始事件数 15 | 晕内死亡 $10\times0.1+5\times0.2=2$，剩余存活 106 |
 
-个局部轨道步。
+第二片结束时，没有再注入新人口，则累计供给 $120=10$（晕外死亡）$+4$（晕内死亡）$+106$（存活）。第二片若长 200 Myr，物理率为 $2/(200\times10^6)=10^{-8}\ \mathrm{yr}^{-1}$，不是用 15 条原始事件直接除以时间。这是算法示例，不是新的模拟输出。
 
-逻辑上，全局步和局部步职责不同：
+### 7.7 第六步：终点的新增质量如何处理
 
-- 全局步更新 $M,R_{\rm vir},C,R_i,\rho_i,v_i,a_{h,i}$；
-- 局部步在冻结的环境中更新每个样本的 $a,e$。
+时间边界共有 $K+1$ 个，但演化片只有 $K$ 个。最后边界 $t_K$ 仍将 $\Delta M_{i,K}$ 登记为供给，并做入晕前 GW 老化；存活者加入最终人口，但没有 $[t_K,t_{K+1})$ 演化。
 
-### 7.2 显式 Euler 更新
+因此总供给可精确对上 $\eta_bM_0$，却不会让终点刚入晕者凭空获得额外 200 Myr。这个边界注入规则是项目离散约定：真实在前一片内连续进入的物质，其早期晕内作用被推迟了，需要用更细环境步评估误差。
 
-论文明确使用 Euler 方法：
+### 7.8 数学上它是什么：带源项和吸收边界的输运
 
-$$
-a_{n+1}=a_n+delta t\,f_a(a_n,e_n;\rho_i,v_i,a_{h,i}),
-$$
+令 $f_i(a,e,t)\,da\,de$ 表示壳内活双星数。忽略壳间输运时，其连续形式是
 
 $$
-e_{n+1}=e_n+delta t\,f_e(a_n,e_n;\rho_i,v_i,a_{h,i}).
+\frac{\partial f_i}{\partial t}
++\frac{\partial(\dot a_i f_i)}{\partial a}
++\frac{\partial(\dot e_i f_i)}{\partial e}
+=S_i(a,e,t),
 $$
-
-其中 $f_a,f_e$ 分别是公式 (19)、(25) 的右端。对一个批次的全部样本，这两个更新应向量化执行。
-
-### 7.3 并合判据
-
-论文只说当 $a$ 接近零时记为并合，没有给出：
 
-- 明确的 $a_{\rm merge}$ 阈值；
-- Euler 一步越过 $a=0$ 时如何定位并合时间；
-- $e\ge1$、$e<0$ 或浮点溢出时如何处理；
-- 是否在 GW 时间尺度短于剩余局部步时直接判定并合；
-- 是否使用自适应步长处理临近并合的刚性。
+并在并合边界设吸收条件。系统从相空间边界流出形成并合事件；$S_i$ 表示活着进入壳层的新系统。
 
-所以“使用 2 Myr Euler 步”可以严格复现，但“稳定而准确地判定并合”仍需要项目自己定义规则。任何钳位、子步进或解析 Peters 剩余时间判据，都应标为数值改进分支，并与原始 Euler 分支对照。
+B 用加权原子测度
 
-每个样本一旦判为并合，应立即停止继续更新，并且在该批次中只计数一次。
-
----
-
-## 8. 一个时间片内究竟做什么
-
-对给定 $M_0$、时间片 $t_k\to t_{k+1}$ 和壳层 $i$，完整操作是：
-
-1. 由 $M(z_k)$ 和浓度模型构造当前 NFW halo；
-2. 由公式 (27) 更新该层边界和代表半径；
-3. 求 $\rho_i,v_i,a_{h,i}$；
-4. 从 $P(a,j)$ 抽取 $N_{\rm sample}$ 组初态；
-5. 转换为 $e_0=\sqrt{1-j_0^2}$；
-6. 用 $a_0\le a_{h,i}$ 标记硬双星；
-7. 对硬双星做最多 100 个 Euler 局部步；
-8. 记录在这 200 Myr 内并合的样本数 $N_{{\rm merger},i,k}$；
-9. 由 NFW 壳层质量求真实双星数 $N_{{\rm BBH},i,k}$；
-10. 把样本并合比例重加权成该层的物理并合率。
-
-论文生产计算称每个壳层、每个时间片都取
-
 $$
-N_{\rm sample}=2\times10^6.
+f_{i,k}\simeq\sum_{\ell\in\mathcal P_{i,k}}
+w_\ell\delta(a-a_{\ell,k})\delta(e-e_{\ell,k})
 $$
-
-这会让内外壳层拥有近似相同的抽样噪声预算。未经重加权时，内层通常因密度高而产生更多并合；重加权后，外层可能因为体积和真实双星数更大而占据重要甚至主导贡献。
 
-### 8.1 样本是否跨全局时间片继承
+近似这个人口分布：ODE 移动每个原子，死亡删除原子，入晕加入原子。当前源项在时间边界离散注入，环境分片冻结，硬/软在片首分类。
 
-这是论文算法中最重要的未决点之一。正文说每个时间步选择一批初始 $(a_0,e_0)$，并在 $t$ 到 $t+\Delta t$ 之间演化；又说每个壳层、每个时间步使用 $2\times10^6$ 个样本。这更接近“每个环境时间片独立抽取一批早期双星并估计该时间片的并合概率”。
+这只是**人口输运的数学解释**，不是程序另外求解了一套 PDE。其核心收益是：老化和环境动力学作用于真实幸存分布，而不是每次又作用于未经演化的 $p_0$。
 
-但论文没有说明：
+## 8. B 的累计数、并合率与统计误差
 
-- 上一时间片未并合的 Monte Carlo 个体是否传入下一时间片；
-- 新吸积进入 halo 的双星数如何与原有存量区分；
-- $N_{{\rm BBH},i,k}$ 是否扣除过去已并合的系统；
-- 壳层随增长容纳的新质量如何分配给 cohort。
+### 8.1 从加权事件得到式 (32) 的 cohort 版本
 
-因此，严格复现时应把“独立时间片重新抽样”和“cohort 跨时间继承”作为两个不同算法。就现有文字而言，前者更贴近论文公开描述，但不能把它声称为作者代码已经确认的事实。
+定义第 $k$ 个边界前的晕内加权累计
 
----
-
-## 9. 从样本并合数到真实 halo 并合率
-
-### 9.1 真实双星数
-
-设壳层 NFW 质量为 $M_i(t_k)$。若 $f_{\rm PBH}=1$，并且 halo 质量中有比例 $f_{\rm binary}$ 位于 PBH 双星内，则由质量守恒直接得到
-
 $$
-N_{{\rm BBH},i,k}
-=\frac{f_{\rm binary}M_i(t_k)}{2m}.
+C_{i,k}=\sum_{q=0}^{k-1}D_{i,q},\qquad C_{i,0}=0.
 $$
 
-一般化后为
+于是
 
 $$
-N_{{\rm BBH},i,k}
-=\frac{f_{\rm PBH}f_{\rm binary}M_i(t_k)}{2m}.
+R_{B,i,k}=\frac{C_{i,k+1}-C_{i,k}}{10^6\Delta t_k}
+=\frac{D_{i,k}}{10^6\Delta t_k},\qquad
+R_{B,k}=\sum_iR_{B,i,k}.
 $$
-
-这是**由论文比例设定直接推出的系统计数公式**；论文第 IV 节没有明确写出分母到底采用 $m$ 还是 $2m$。实现时必须明确 $f_{\rm binary}$ 是“双星中所含 PBH 的质量比例”还是“PBH 对象比例”，否则会产生因子 2 的歧义。
-
-### 9.2 Monte Carlo 重加权
 
-样本在一个时间片中的并合概率估计为
+若进一步按入晕 cohort 展开，
 
 $$
-\hat p_{i,k}
-=\frac{N_{{\rm merger},i,k}}{N_{\rm sample}}.
+D_{i,k}
+=\sum_{c=0}^k\frac{Q_{i,c}}{n_{ic}}
+\sum_{\ell=1}^{n_{ic}}
+\mathbf1[\ell\text{ 活到入晕且恰在片 }k\text{ 晕内并合}].
 $$
 
-该壳层在该时间片的期望并合数为
+这与 A 的“人口乘并合比例”原理相同，但人口乘数分属于不同 cohort，事件条件包含此前整个历史。**样本的 $Q/n$ 已经完成系统数归一化，不能再乘 $\eta_bM_i/n_{\rm live}$。**
 
-$$
-\widehat{\Delta N}_{{\rm merge},i,k}
-=N_{{\rm BBH},i,k}\hat p_{i,k},
-$$
-
-相应的平均率为
+B 的 raw_mergers_per_step 仅是示踪轨道数。不同 cohort 的权重不同，不能对其累计曲线乘一个固定常数就变成物理累计数。
 
-$$
-\widehat R_{i,k}
-=\frac{N_{{\rm BBH},i,k}}{N_{\rm sample}}
-\frac{N_{{\rm merger},i,k}}{\Delta t}.
-$$
+### 8.2 平滑与第一片
 
-对所有壳层相加得到逐时间片的单 halo 率：
+率应标在时间片中点对应的红移：
 
 $$
-\boxed{
-R_{\rm halo}(M_0,t_k)
-=\sum_i
-\frac{N_{{\rm BBH},i,k}}{N_{\rm sample}}
-\frac{N_{{\rm merger},i,k}}{\Delta t}
-}
+z_{{\rm mid},k}=z\!\left(\frac{t_k+t_{k+1}}2\right),
 $$
-
-其单位可转换为 ${\rm yr}^{-1}\,{\rm halo}^{-1}$。
-
-### 9.3 公式 (32) 的时间求和歧义
 
-论文公式 (32) 写成对 $i,t$ 都求和的形式：
+而不是默认用两端红移的算术平均。
 
-$$
-R_{\rm halo}
-=\sum_i\sum_t
-\frac{N_{{\rm PBH\ binaries},i,t}}{N_{\rm sample}}
-\frac{N_{{\rm merger},i,t}}{\Delta t}.
-\tag{32}
-$$
-
-若要画“随红移变化的并合率”，不能在每个红移点再把全部 $t$ 求和；应使用上面的逐时间片形式。若对 $k$ 累加，则得到的是所有时间片贡献的总和，或在乘回 $\Delta t$ 后得到累计并合数：
+对于合并的一组时间片 $\mathcal W$，守恒的分组率是
 
 $$
-N_{\rm merge,cum}
-=\sum_k R_{\rm halo}(t_k)\Delta t.
+\bar R_{\mathcal W}
+=\frac{\sum_{k\in\mathcal W}\sum_iD_{i,k}}
+{10^6\sum_{k\in\mathcal W}\Delta t_k}.
 $$
 
-所以代码应分别保存：
+非等长片不能直接做率的算术平均。原文说平均时丢弃第一步并从约 $z\simeq10$ 展示，但未公开完整多项式算法。当前 notebook 保存全部原始事件，仅在 B 展示的分组平均曲线中排除第一片，使用四片合并；它不是作者多项式平均的复原。
 
-- `rate_per_time_bin`：逐红移/逐时间片率；
-- `expected_mergers_per_bin`：该片的期望并合数；
-- `cumulative_mergers`：前两者积分得到的累计量。
+第一片中点约 $z=10.13$ 与“已丢弃第一片”是不同操作。最后短片的真实时长同样必须保留。
 
-不能让一个名为 `R_halo` 的标量同时承担三种意义。
+### 8.3 为什么 B 的误差不能照搬单一二项公式
 
-### 9.4 Monte Carlo 误差
+对 A，同一壳片的独立同分布样本有
 
-对于独立 Bernoulli 计数，未加权的并合比例误差约为
-
 $$
-\sigma_{p,i,k}
-\simeq
-\sqrt{\frac{\hat p_{i,k}(1-\hat p_{i,k})}{N_{\rm sample}}}.
+\operatorname{Var}(\hat p)\simeq\frac{p(1-p)}n.
 $$
-
-当外层只有极少样本并合时，重加权后会出现明显尖峰。论文对此做了多项式平均，并丢弃第一个时间点，因此部分图从约 $z\simeq10$ 开始，而非模拟起点 $z=12$。但论文没有公开多项式阶数、窗口、权重或边界处理，所以平滑后的曲线不能仅凭文字逐点复现。代码应优先保存原始计数和未平滑率，平滑只作为派生输出。
-
----
 
-## 10. 从单 halo 率到宇宙共动并合率
+对 B，固定某个 cohort，令 $p_{ic,k}$ 为一个原初抽样最终在片 $k$ 晕内并合的概率，则
 
-### 10.1 halo 质量网格
-
-论文使用 50 个今天质量点，按对数覆盖
-
 $$
-10^3M_\odot\le M_0\le10^{15}M_\odot.
+\operatorname{Var}(\hat D_{ic,k})
+=\frac{Q_{i,c}^2}{n_{ic}}p_{ic,k}(1-p_{ic,k}).
 $$
-
-对每条质量轨迹都执行前述壳层—时间—Monte Carlo 计算，得到 $R_{\rm halo}(M,z)$。
 
-### 10.2 HMF 积分
+不同 cohort 独立时方差相加；同一 cohort 的两个不同时间片事件互斥，因每条轨道只能并合一次，
 
-共动体积并合率的基本形式是
-
 $$
-\boxed{
-\mathcal R(z)
-=\int dM\,
-\frac{dn(M,z)}{dM}
-R_{\rm halo}(M,z)
-}
+\operatorname{Cov}(\hat D_{ic,k},\hat D_{ic,q})
+=-\frac{Q_{i,c}^2}{n_{ic}}p_{ic,k}p_{ic,q},\qquad k\ne q.
 $$
-
-单位为
 
-$$
-{\rm Gpc}^{-3}\,{\rm yr}^{-1}.
-$$
+这说明时间片结果有统计关联，不能把每片当成独立实验估计累计误差。稀少事件下，用经验 $\hat p=0$ 得到零误差尤其不可信。
 
-论文基准采用 Press–Schechter halo mass function，并用 Jenkins HMF 做敏感性比较。论文报告在 $z<1$ 时 Press–Schechter 给出的结果可高约 6–8 倍，较高红移处差距缩小。这说明 HMF 不是外围输入，而是总体率归一化的重要系统误差源。
+可以使用多个独立随机种子、按原始 cohort 分层重采样来估计不确定性；当前驱动没有自动输出这些完整协方差或置信区间。不能把这里的推导写成“现有程序已经完成误差条计算”。
 
-实现时还需明确积分变量是目标红移处的瞬时 halo 质量 $M(z)$，还是由今天质量 $M_0$ 标记的轨迹。论文用 $M_0$ 组织质量吸积轨迹，但没有详述把轨迹网格插入目标红移 HMF 的全部数值细节；这需要在接口中显式保留 `track_mass_M0` 与 `instantaneous_mass_Mz` 两个字段。
+## 9. 环境效应、GW 背景和配对控制
 
-### 10.3 与直接俘获通道相加
+因为完整 RHS 已含 GW，R_full 是完整方程下的全部事件，不是自动扣除孤立背景的“第三体独有事件”。
 
-第 IV 节 binary-single 结果最终与前文的直接双体俘获率相加：
+有意义的配对控制固定原初样本、质量供给、形成时刻、时间网格及入口老化，只在晕内关闭环境项：
 
 $$
-\mathcal R_{\rm total}
-=\mathcal R_{\rm capture}
-+\mathcal R_{\rm binary-single}.
+\Delta R_k=R_{{\rm full},k}-R_{{\rm GW},k}.
 $$
 
-这只是两个通道率的直接相加。论文没有建立共享 PBH 库，也没有处理一个 PBH 已在某通道消耗后不能再进入另一个通道的联合耗尽问题。因此它是“稀疏事件、背景固定”近似下的总率，而不是两通道完全自洽的总体演化。
-
-论文还给出总率随 $f_{\rm PBH}^2$ 缩放的讨论。该缩放是在其固定环境与比例设定下的重标度，不等价于重新计算不同 $f_{\rm PBH}$ 对 halo 结构、双星初始分布和耗尽历史的反馈。
-
----
-
-## 11. 从输入到输出的完整伪代码
-
-下面的伪代码严格区分“轨迹标签”“瞬时 halo 状态”“Monte Carlo 样本”和“物理重加权量”：
-
-```text
-INPUT:
-    cosmology
-    present-day halo masses M0_grid (50 log-spaced points, 1e3--1e15 Msun)
-    mass-accretion model M(z | M0)
-    concentration model C(M,z)             # paper: Ludlow16
-    HMF dn/dM                              # paper baseline: Press-Schechter
-    PBH masses m1 = m2 = 30 Msun
-    f_PBH = 1, f_binary = f_single = 0.5
-    initial binary sampler P(a,j)
-    dt_global = 200 Myr
-    dt_local  = 2 Myr
-    N_sample  = 2e6 per shell per global time bin
+对 B，两个控制臂可以各自有不同幸存人口：环境提前促成的事件，会使 full 后来少一个活双星。必须分别推进两套人口，不能强迫它们共享同一个死亡掩码。
 
-FOR each M0 in M0_grid:
-    choose start redshift
-        if M0 >= 5e4 Msun: z_start = 12
-        else: lower z_start until halo contains about 30 PBHs
-
-    choose N_shell from the M0 track category
-    build cosmic-time bins from z_start to z=0
+$\Delta R_k$ 可以为负，这可能表示事件被提前至别的时间片，而非第三体“产生负事件”。它是净时序效应，不可未经去重就作为独立物理通道与其他率相加。
 
-    FOR each global bin k = [t_k, t_k + dt_global]:
-        z_k = z(t_k)
-        M_k = M(z_k | M0)
-        C_k = concentration(M_k, z_k)
-        construct NFW(M_k, C_k, z_k)
-        compute Rvir_k
-        compute shell boundaries R_i(k) from Eq. (27)
+当前 notebook 的 B 初跑 full/GW-only 使用同一供给初态，可配对比较；四倍 full 与初跑 GW-only 的样本规模不同，不是逐轨道配对。pristine 与 gw_aged 比较入口老化，A 与 B 则同时涉及人口继承和供给口径，不能把所有差异归因于一个开关。
 
-        FOR each shell i:
-            r_mid = (R_i + R_{i+1}) / 2
-            rho_i = rho_NFW(r_mid)
-            Menc_i = M_NFW(<r_mid)
-            v_i = sqrt(2 G Menc_i / r_mid)       # printed Eq. (24)
-            ah_i = G m1 / (4 v_i^2)              # Eq. (23)
+## 10. 可直接对应程序的伪代码
 
-            shell_mass = M_NFW(<R_{i+1}) - M_NFW(<R_i)
-            N_BBH_actual = f_PBH * f_binary * shell_mass / (2m)
-                # factor convention must be documented
+### 10.1 共同准备与 A
 
-            sample N_sample independent (a0,j0) from P(a,j)
-            e0 = sqrt(1-j0^2)
-            hard_mask = (a0 <= ah_i)
+    输入 M0、模型、PBH 质量/比例、联合初态、随机种子、积分配置
+    根据至少约 30 个 PBH 的条件确定起始红移
+    构造宇宙年龄边界和固定编号壳层
 
-            a = a0[hard_mask]
-            e = e0[hard_mask]
-            merged = false for every retained sample
+    A：对每个实际时间片 k、每个壳 i
+        在片首构造环境 E[i,k]
+        分块抽取 n 个原初轨道
+        标记硬双星，调用 evolve_binary_batch
+        保存总样本数、硬样本数、并合数、数值失效数
+        不把存活轨道传到下一片
 
-            REPEAT up to dt_global/dt_local = 100 times:
-                H = H(a/ah_i)
-                K = Sesana-fit K(...)
-                da_dt = three_body_hardening + GW_shrinkage
-                de_dt = three_body_eccentricity + GW_circularization
-                a <- a + dt_local * da_dt
-                e <- e + dt_local * de_dt
-                identify newly merged samples
-                stop updating merged samples
+    在 notebook 中：
+        对原始累计取相邻差得到逐片计数
+        以 eta_b * M[i,k] / n 换算事件期望
+        除以真实片长得到 A 率
 
-            N_merger[i,k] = count(merged)
-            p_merge[i,k] = N_merger[i,k] / N_sample
-            expected_mergers[i,k] = N_BBH_actual * p_merge[i,k]
-            rate_shell[i,k] = expected_mergers[i,k] / dt_global
+### 10.2 B：边界注入、片内演化、永久移除
 
-        rate_halo[M0,k] = sum_i rate_shell[i,k]
-        cumulative_halo[M0,k] = time integral of rate_halo
+    构造所有时间边界的 M_shell[i,k]
+    检查每个壳的质量增量是否可用于无输运供给模型
+    Q[i,k] = eta_b * Delta_M_shell[i,k]
+    populations[i] = 空集
 
-AT each requested redshift z_k:
-    interpolate rate_halo onto the HMF mass variable consistently
-    rate_comoving[z_k] = integral dM (dn/dM)(M,z_k) * rate_halo(M,z_k)
+    对每个边界 k = 0,...,K：
+        对每个壳 i：
+            若 Q[i,k] > 0：
+                抽 n 个原初轨道，每个权重 w = Q[i,k] / n
+                gw_aged：
+                    在零环境中演化 t[k] - formation_age
+                    晕外并合者记入 outside 后删除
+                    其余带演化后的 a,e 入晕，不重标权重
+                pristine：
+                    不老化，全部原初轨道入晕
+                将新存活者附加到旧存活者，记录 entry_boundary=k
 
-OUTPUT:
-    halo histories and shell diagnostics
-    raw sample counts N_hard, N_merger
-    shell rate, per-halo rate, cumulative mergers
-    comoving binary-single merger rate
-    optional total = binary-single + direct-capture rate
-```
+            记录该边界注入后的存活权重
+            若 k == K：不再做晕内推进
 
----
+            否则调用 evolve_binary_population_batch 推进实际片长
+                片首硬双星：环境 + GW
+                片首软双星：仅 GW
+            数值失效则报错
+            记录 raw_count 和 sum(weight[merged])
+            永久移除 merged
+            存活者保留 final a,e、原 weight、原 entry_boundary
 
-## 12. 每一级输出是什么，它回答什么问题
+    返回供给/晕外死亡/晕内事件/存活账本和最终轨道
+    在 notebook 中先累计事件权重，再差分除以片长画率
+    保留 A、B-GW-only、B-pristine 和样本规模控制
 
-### 12.1 halo/壳层诊断输出
+## 11. 当前接口与输出字段
 
-建议最先保存：
+| 层次 | 当前入口/对象 | 职责 |
+|---|---|---|
+| halo | build_halo_shell_state；build_shell_environment | $M_i,\rho_i,v_i,a_{h,i}$ 与结构元数据 |
+| 初态 | AppendixDOrbitalDistribution.sample | 相关的 $a,j,e$，不附加人口历史 |
+| RHS | orbital_derivatives；log_a_orbital_rhs | 分项轨道导数及等价积分变量 |
+| A 单片 | evolve_binary_batch | 硬双星演化与原始事件 |
+| B 单片 | evolve_binary_population_batch | 硬双星完整演化、软双星纯 GW |
+| A 驱动 | run_raw_shell_monte_carlo | RawShellMergerHistory，原始样本统计 |
+| B 设置 | CohortPopulationConfig | 初始/后续样本量、entry_orbit_model、formation_age_myr |
+| B 活人口 | CohortOrbitalPopulation | semi_major_axis_pc、eccentricity、weight、entry_boundary |
+| B 驱动 | run_cohort_shell_monte_carlo | CohortShellMergerHistory 与存活轨道 |
+| 分析 | R_bs_perhalo.ipynb | 配置、缓存、A/B 比较和图像 |
 
-- $M(z),R_{\rm vir}(z),C(z)$；
-- 每层 $R_i,r_{\rm mid},M_i,\rho_i,v_i,a_{h,i}$；
-- $N_{\rm shell}$ 及其选择依据；
-- 所用速度约定和浓度模型名称。
+B 的边界数组形状为 $(K+1,N_s)$：
 
-这些量回答：“双星被放进了怎样的环境？”论文图 10、11 主要属于这一层。
+- shell_mass_at_boundary_msun：$M_{i,k}$；
+- supplied_binary_weight_per_boundary：$Q_{i,k}$；
+- outside_merged_weight_per_boundary：$O_{i,k}$；
+- entered_alive_weight_per_boundary：$E_{i,k}$；
+- surviving_weight_at_boundary：注入后的 $N_{i,k}^{\rm alive}$；
+- drawn_per_boundary：该边界原始抽样数，不是存活数。
 
-### 12.2 样本级输出
+B 的片数组形状为 $(K,N_s)$：
 
-- 初始 $a_0,j_0,e_0$；
-- `hard_mask`；
-- 并合标记与并合所在局部步；
-- 必要时保存少量轨道的 $a(t),e(t)$，而不是保存全部 $2\times10^6$ 条轨迹。
+- raw_mergers_per_step：原始并合示踪数；
+- merged_weight_per_step：$D_{i,k}$；
+- soft_gw_merged_weight_per_step：本片初始软双星中的 GW 并合权重；
+- rate_shell_per_year：$D_{i,k}/(10^6\Delta t_k)$。
 
-这些量回答：“Monte Carlo 样本为何被保留，以及通过哪种动力学走向并合？”
+cumulative_merger_weight 的第一行是零；population_balance_residual 对应第 7.6 节；final_populations 含最后边界刚进入的存活者。
 
-### 12.3 统计输出
+单片 BinaryEvolutionEvents 还给出并合掩码、失效掩码和相对本次调用起点的 merger_time_myr。B 驱动当前保存的是逐片事件汇总与最终存活轨道，不是完整的逐死亡个体事件目录，也没有把每片完整轨道快照都保存下来。entry_boundary 标识入晕 cohort，不是全球唯一的双星编号。
 
-- $N_{\rm sample},N_{\rm hard},N_{\rm merger}$；
-- 原始 $hat p_{i,k}$ 与统计误差；
-- $N_{{\rm BBH},i,k}$；
-- 壳层重加权前、后的贡献；
-- 未平滑率和平滑率。
+## 12. 真实结果作为算法实例，不作为收敛证明
 
-这些量回答：“图中的并合率究竟来自高并合概率，还是来自巨大的真实双星数量？”论文图 12–14 主要展示这一层。
+以下读取 2026-09-23 已完成缓存 [cohort_summary.json](pic_and_data/r_bs_perhalo/cohort_summary.json)，本次仅核对，不新增运行。
 
-### 12.4 最终物理输出
+对 $M_0=1.5\times10^6M_\odot$、Prada12-HMF、Strict joint、Adaptive：
 
-- $R_{\rm halo}(M_0,z)$，单位 ${\rm yr}^{-1}\,{\rm halo}^{-1}$；
-- $\mathcal R_{\rm binary-single}(z)$，单位 ${\rm Gpc}^{-3}\,{\rm yr}^{-1}$；
-- 不同 HMF、浓度关系和 $f_{\rm PBH}$ 的分支；
-- 与直接俘获通道相加后的 $\mathcal R_{\rm total}(z)$。
+| B 分支 | 抽样总数 | 晕外并合权重 | 晕内并合权重 | 今天存活权重 |
+|---|---:|---:|---:|---:|
+| gw_aged 初跑 | 112,040 | 849.7275 | 195.6283 | 11,454.6442 |
+| 同样本 GW-only | 112,040 | 849.7275 | 116.7720 | 11,533.5005 |
+| pristine 入口控制 | 112,040 | 0 | 1,014.3650 | 11,485.6350 |
+| gw_aged 四倍样本 | 448,160 | 861.5214 | 197.4640 | 11,441.0146 |
 
-论文图 15–17 主要属于这一层。
+每行三个去向的和都是 12,500（表中舍入可能产生末位差）。四倍样本账本最大残差为 $3.64\times10^{-12}$。
 
----
+A 的全史加权累计约 35,680，但 A 是重复窗口人口解释，不能把它与 B 一样称为单一守恒人口的独立系统死亡数。B 纠正了这种解释与实现；仍不能由此认定论文曲线已经复现。
 
-## 13. 最容易混淆的逻辑关系
+四倍样本下总晕内累计相对初跑变化约 0.94%，但最高红移区间平均率变化约 63%。全史累计较稳定，不等于时间分辨率曲线已经收敛。B 幅度仍明显高于论文，当前不按“必须单调”筛选结果或平滑掉真实波动。
 
-### 13.1 壳层编号固定，不等于壳层物理结构固定
+## 13. 已完成、仍需假设、未实现的边界
 
-沿 $M_0$ 轨迹固定的是层数和层级编号；随吸积史变化的是 $M(z),R_i(t),\rho_i(t),v_i(t),a_h(t)$。如果把所有壳层量冻结在 $z=0$，就失去了论文研究 halo 演化的核心。
+### 13.1 已完成的算法闭合
 
-### 13.2 局部密度不等于壳层总质量
+当前 B 实现了原初系统预算、入晕前 GW 老化、活人口轨道继承、永久移除并合者、增量人口供给及逐片加权率。A 对照没有被删除。主干模块不画图；具体实验、缓存与展示仍由 notebook 控制。
 
-$\rho_{\rm NFW}(r_{\rm mid})$ 进入硬化微分方程；壳层积分质量 $M_i$ 决定真实双星数。两者职责不同，不能共用一个近似量而不说明。
+### 13.2 物理上仍未自洽处理的过程
 
-### 13.3 硬双星比例不等于并合概率
+- 壳间径向输运、真实入晕轨道和连续进入时间；当前按壳正质量增量、边界时刻注入。
+- 软双星离解、反冲逃逸、交换、再形成、并合遗迹再参与后续事件。
+- 散射背景随双星耗尽、遗迹生成和能量交换的自洽反馈；当前 NFW 环境作为给定背景。
+- 形成时间分布，以及原初轨道与吸积选择之间的相关性；当前早期共同形成、独立抽样。
+- $K$ 在高偏心率和等质量第三体场景的可靠性。
+- 接近并合时的精确相对论动力学；$6GM/c^2$ 只是数值终止约定。
 
-$a_0<a_h$ 只说明样本可用硬化公式继续演化；能否在 200 Myr 内并合还取决于 $a_0,e_0,\rho,v,H,K$ 以及 GW 项。
+人口账本闭合不意味着这些物理过程都已解决。
 
-### 13.4 原始并合数不等于物理壳层贡献
+### 13.3 数值收敛需要分别检验
 
-相同 $N_{\rm sample}$ 下，内层原始并合数常较高；但外层的 $N_{\rm BBH}$ 可以大得多。只有完成公式 (32) 的人口重加权，才能比较壳层的物理贡献。
+需区分初始/新入晕样本量与随机种子、200 Myr 环境与注入离散、Adaptive 容差、并合终点、初态截断等误差。减小 ODE 局部误差不会自动消除环境冻结误差；多抽样也不会修正错误的入口分布。
 
-### 13.5 单 halo 率不等于宇宙总体率
+当前已有回放和时钟对照见诊断报告；没有把本节列出的全部收敛研究实现为已完成的结果。
 
-高质量 halo 单体率可能高，但数量稀少；低质量 halo 单体率低，却可能数量庞大。HMF 积分决定最后哪个质量区间主导宇宙总体率。
+### 13.4 HMF 和宇宙总体率只保留概念边界
 
----
+若以后扩展，可写
 
-## 14. 论文没有完全封闭的实现细节
-
-在开始正式编码前，应把下列项目作为显式配置或待核对项：
-
-1. **速度约定冲突**：公式 (24) 与表 I/III 数值并不完全一致；
-2. **$K$ 的实现**：需从 Sesana et al. (2006) 补齐函数、参数范围和插值；
-3. **联合分布抽样**：附录 D 的文字顺序是否真正等价于目标 $P(a,j)$；
-4. **生产样本的继承关系**：每个 200 Myr 独立重采样，还是继承未并合 cohort；
-5. **并合阈值**：何谓 $a\to0$，以及 Euler 越界如何处理；
-6. **偏心率边界**：数值上如何保证 $0\le e<1$；
-7. **实际双星数定义**：$f_{\rm binary}$ 的质量比例/对象比例及因子 2；
-8. **公式 (32) 的时间求和**：逐时间片率与累计量必须分开；
-9. **平滑细节**：多项式阶数、拟合窗口和权重未公开；
-10. **HMF 的质量变量**：瞬时 $M(z)$ 与轨迹标签 $M_0$ 的插值映射；
-11. **逃逸与耗尽**：论文忽略，不能在解释结果时当作已经自洽处理；
-12. **最后一个不足 200 Myr 的时间片**：论文未说明舍弃、缩短还是延伸。
-
-这些并不妨碍建立主程序骨架，但每一项都应在结果元数据中留下选择记录，否则不同实现可能产生“都声称按论文、实际算法却不同”的情况。
-
----
-
-## 15. 与本项目后续接口的对应关系
-
-为了让后续程序既能复现论文，也能替换 Prada12-HMF 等模型，建议保持以下责任边界：
-
-```text
-mass_history(M0, z, model)
-    -> instantaneous M(z)
-
-concentration(M, z, model)
-    -> C(M,z)
-
-halo_structure(M0, z, history_model, concentration_model,
-               shell_policy, velocity_convention)
-    -> Rvir, NFW parameters, shell boundaries,
-       shell mass, rho_mid, v_disp, a_h
-
-initial_binary_sampler(N, sampler_mode)
-    -> a0, j0, e0, sampling weights
-
-evolve_binary_batch(a0, e0, environment, dt_global, dt_local,
-                    K_model, merger_criterion)
-    -> hard mask, merger mask, merger time, diagnostics
-
-reweight_shell_statistics(counts, actual_binary_population, dt_global)
-    -> shell rate and uncertainty
-
-integrate_halo_rate(shell_rates)
-    -> per-halo rate versus time/redshift
-
-integrate_hmf(per_halo_rate, dn_dM)
-    -> comoving merger-rate density
-```
-
-其中：
-
-- `history_model="paper"` / `concentration_model="Ludlow16"` 对应论文分支；
-- `history_model="Prada12-HMF"` 对应本项目后续默认分支；
-- `velocity_convention="eq24"` 应严格实现印刷公式；
-- 表格匹配只能作为单独诊断分支；
-- `sampler_mode="paper_order"` 与 `sampler_mode="strict_joint"` 必须分开；
-- 原始计数永远先保存，HMF 积分和平滑不得覆盖它们。
-
----
-
-## 16. 最终理解：这个模拟真正做了什么
-
-从物理上说，它研究的是一条“环境催化”链：
-
-$$
-\text{halo 吸积增长}
-\rightarrow
-\text{局部密度和速度改变}
-\rightarrow
-\text{硬双星阈值与三体硬化效率改变}
-\rightarrow
-\text{双星进入 GW 主导区的概率改变}
-\rightarrow
-\text{单 halo 并合率改变}
-\rightarrow
-\text{宇宙总体并合率改变}.
-$$
-
-从数值上说，它做的不是“真实生成一个 halo 中的全部 PBH 并逐个演化”，而是：
-
 $$
-\text{在规则化环境网格上估计条件并合概率，}
+\mathcal R(z)=\int dM\,\frac{dn(M,z)}{dM}\,R_{\rm halo}(M,z).
 $$
 
-再用实际人口和 HMF 两次重加权：
+积分中的 $M$ 是目标红移处的瞬时质量，不能把今天轨迹标签 $M_0$ 当成同一变量；换变量需要明确且有效的轨迹映射/Jacobian。本次不实现该积分、不添加共享 PBH 库，也不直接把含 GW 背景的率当作全新独立通道叠加。
 
-$$
-\underbrace{\hat p_{\rm merge}(M,z,i)}_{
-\text{轨道 Monte Carlo}}
-\times
-\underbrace{N_{\rm BBH}(M,z,i)}_{
-\text{壳层人口重加权}}
-\times
-\underbrace{\frac{dn}{dM}(M,z)}_{
-\text{halo 丰度重加权}}.
-$$
+## 14. 最后用一句物理话总结 A 与 B
 
-这三个因子分别回答：
+**A 问：一批具有原初轨道的双星，放入今天这个时间片的环境，会有多少并合？**
 
-1. 一个双星在该环境中多容易并合？
-2. 这种环境中实际有多少双星？
-3. 宇宙中实际有多少这样的 halo？
+**B 问：从早期形成、分批进入 halo、一路继承演化至今的双星，当前还有哪些活着，并有多少恰在这一片并合？**
 
-只有三者都定义清楚，最后的 ${\rm Gpc}^{-3}\,{\rm yr}^{-1}$ 才具有明确意义。这也是后续编写程序时最应该保持的数据流主线。
+从 A 走到 B，新增的不是一个经验修正因子，而是完整的人口时钟、供给历史和吸收事件记账。只有把这些与轨道方程同时定义清楚，“累计并合数”和“随红移演化的单 halo 并合率”才对应同一套物理历史。
