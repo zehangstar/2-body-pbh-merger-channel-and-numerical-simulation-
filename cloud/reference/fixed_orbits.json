@@ -1,0 +1,135 @@
+{
+  "provenance": {
+    "python": "3.13.12 (tags/v3.13.12:1cbe481, Feb  3 2026, 18:22:25) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "packages": {
+      "numpy": "2.4.2",
+      "scipy": "1.17.1",
+      "matplotlib": "3.10.8",
+      "astropy": "8.0.1",
+      "hmf": "3.6.3",
+      "camb": "2.0.4"
+    },
+    "sources": {
+      "binary_single.py": "b0f3f6a211e309b3561255a46ed80c7af0e5df9842ebb77b3b848552cf8ae3ad",
+      "binary_single_montecarlo.py": "9660f681559227ae77e42d76bdbeca96153db846d038f97c8139e6f4e3f491be",
+      "expected_a.py": "31d729e83819eb24ace6a3682dd0b01f4ab8e29929883af678746c4720e9f8e4",
+      "fig12_diagnostics.py": "4fc958193402f8fcea9ece032a3260e39e8c7071d01b7451832462f56a921dbe",
+      "haloconcentration.py": "908f1e0ecb30084e5ec97c42d72ab7fea2da6699caff565218ad1ac8c9562ef9",
+      "halohistory.py": "fcc38d6e6c4d934dc1409d48e599945fa48ca1ddd92138601cdbfee5b191db67",
+      "halostructure.py": "d0095fa764438e9684f84e816930daa8b0f5012ac499c291c2a6de110947c2d9",
+      "p_a_j.py": "fbc5af6f4d4a3694cc554811ebc489868f20872a3150eb8c9126953f65de3dbc",
+      "pbhmassfunction.py": "aef8e0d0750611091698644a2e3301c16c77dbd2916917754fb292537491882f",
+      "rate_evolution_diagnostics.py": "f83f7389926aa0469dd56d4f6525b5ab1235b4228388b46e4827cafd3cb12e6a",
+      "twobodycapture.py": "abdb5adf4d9e6bc8efa92b231f39c184620004baa72cac536c8263975c430311"
+    }
+  },
+  "config": {
+    "halo_model": "prada12_hmf_sigma",
+    "primary_mass_msun": 30.0,
+    "secondary_mass_msun": 30.0,
+    "pbh_fraction_total": 1.0,
+    "fraction_single": 0.5,
+    "fraction_binary": 0.5,
+    "velocity_mu": 0.5,
+    "ksi": 1.0,
+    "global_timestep_myr": 200.0,
+    "local_timestep_myr": 2.0,
+    "start_redshift": 12.0,
+    "sample_count_per_shell_and_step": 2000000,
+    "integration_method": "adaptive_log_a",
+    "eccentricity_growth_model": "sesana_endpoint",
+    "integration_rtol": 1e-06,
+    "integration_time_atol_myr": 1e-08,
+    "integration_log_j2_atol": 1e-09,
+    "integration_max_log_a_step": 0.25,
+    "integration_max_attempts": 10000,
+    "merger_radius_gm_c2": 6.0
+  },
+  "distribution": {
+    "pbh_mass_msun": 30.0,
+    "f_pbh": 1.0,
+    "rho_eq_msun_pc3": 1614.9730832622506,
+    "sigma_eq": 0.005,
+    "alpha": 0.1,
+    "minimum_semi_major_axis_pc": 1e-06,
+    "maximum_semi_major_axis_pc": 1.0,
+    "semi_major_axis_grid_point_count": 16384
+  },
+  "seed": 20260925,
+  "elapsed_seconds": 1.2303606000023137,
+  "rows": [
+    {
+      "z": 12,
+      "shell": 1,
+      "mode": "full",
+      "sampled": 128,
+      "hard": 93,
+      "merged": 76,
+      "invalid": 0
+    },
+    {
+      "z": 12,
+      "shell": 1,
+      "mode": "gw_only",
+      "sampled": 128,
+      "hard": 93,
+      "merged": 12,
+      "invalid": 0
+    },
+    {
+      "z": 12,
+      "shell": 5,
+      "mode": "full",
+      "sampled": 128,
+      "hard": 21,
+      "merged": 13,
+      "invalid": 0
+    },
+    {
+      "z": 12,
+      "shell": 5,
+      "mode": "gw_only",
+      "sampled": 128,
+      "hard": 21,
+      "merged": 12,
+      "invalid": 0
+    },
+    {
+      "z": 0,
+      "shell": 1,
+      "mode": "full",
+      "sampled": 128,
+      "hard": 90,
+      "merged": 57,
+      "invalid": 0
+    },
+    {
+      "z": 0,
+      "shell": 1,
+      "mode": "gw_only",
+      "sampled": 128,
+      "hard": 90,
+      "merged": 12,
+      "invalid": 0
+    },
+    {
+      "z": 0,
+      "shell": 5,
+      "mode": "full",
+      "sampled": 128,
+      "hard": 4,
+      "merged": 4,
+      "invalid": 0
+    },
+    {
+      "z": 0,
+      "shell": 5,
+      "mode": "gw_only",
+      "sampled": 128,
+      "hard": 4,
+      "merged": 4,
+      "invalid": 0
+    }
+  ]
+}

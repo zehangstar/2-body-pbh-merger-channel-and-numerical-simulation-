@@ -384,6 +384,8 @@ def run_cohort_shell_monte_carlo(
     orbital_distribution=None,
     random_seed=12345,
     progress_callback=None,
+    checkpoint_path=None,
+    resume=False,
 ):
     """方案 B：带入晕 cohort 和质量权重的人口守恒轨道演化。
 
@@ -397,6 +399,10 @@ def run_cohort_shell_monte_carlo(
     但不给它额外演化时长。final_populations 包含这些刚进入的终点存活者。
     保持壳编号、按各壳质量增量供给、早期共同形成是显式模型闭合条件。
     不含反冲、软双星离解、再形成、双星合并后代再入或壳间迁移。
+
+    可选 checkpoint_path 在每个完整时间边界后保存人口、账本和 RNG 状态；
+    resume=True 从该文件继续（文件尚不存在则从头开始）。配置、源码或
+    严格采样器参数改变时拒绝续算；不改变无检查点调用的抽样顺序。
     """
     config = bs.BinarySingleConfig() if config is None else config
     population_config = CohortPopulationConfig() if population_config is None else population_config
@@ -434,8 +440,47 @@ def run_cohort_shell_monte_carlo(
     soft_merged_weight = np.zeros_like(merged_weight)
     populations = [CohortOrbitalPopulation(np.empty(0),np.empty(0),np.empty(0),np.empty(0,dtype=int)) for _ in range(nshell)]
     rng = np.random.default_rng(int(random_seed))
+    first_boundary = 0
+    checkpoint = None
+    if resume and checkpoint_path is None:
+        raise ValueError('resume=True 需要 checkpoint_path。')
+    if checkpoint_path is not None:
+        import hashlib
+        import json
+        from dataclasses import asdict
+        from pathlib import Path
+        if type(distribution) is not p_a_j.AppendixDOrbitalDistribution:
+            raise ValueError('检查点目前只支持显式参数可记录的严格 Appendix D 采样器。')
+        checkpoint = Path(checkpoint_path)
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        identity = dict(schema=1, mass_msun=float(present_day_halo_mass_msun),
+            config=asdict(config), population=asdict(population_config),
+            distribution=asdict(distribution), seed=int(random_seed),
+            sources={Path(p).name: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+                     for p in (__file__, bs.__file__, hc.__file__, bs.hs.__file__, p_a_j.__file__)})
+        ledger_names = ('drawn', 'outside', 'entered', 'surviving', 'raw_mergers',
+                        'merged_weight', 'soft_merged_weight')
+        ledgers = (drawn, outside, entered, surviving, raw_mergers,
+                   merged_weight, soft_merged_weight)
+        if checkpoint.exists():
+            if not resume:
+                raise FileExistsError('检查点已存在；请使用 resume=True 或新的输出目录。')
+            with np.load(checkpoint, allow_pickle=False) as saved:
+                if json.loads(str(saved['identity'])) != identity:
+                    raise ValueError('检查点配置/采样器/源码与当前运行不一致，不能续算。')
+                if not np.allclose(saved['time_edges_myr'], times, rtol=0, atol=1e-9):
+                    raise ValueError('检查点时间网格不一致。')
+                first_boundary = int(saved['next_boundary'])
+                if not 0 <= first_boundary <= nsteps + 1:
+                    raise ValueError('检查点边界索引无效。')
+                for name, target in zip(ledger_names, ledgers):
+                    target[:] = saved[name]
+                rng.bit_generator.state = json.loads(str(saved['rng_state']))
+                populations = [CohortOrbitalPopulation(*[
+                    saved[f'population_{i}_{field}'].copy()
+                    for field in ('a', 'e', 'weight', 'entry')]) for i in range(nshell)]
 
-    for k in range(nsteps+1):
+    for k in range(first_boundary, nsteps+1):
         shell = shells[k]
         for i in range(nshell):
             if supplied[k,i] > 0:
@@ -481,6 +526,20 @@ def run_cohort_shell_monte_carlo(
             populations[i] = CohortOrbitalPopulation(
                 event.final_state.semi_major_axis_pc[keep],event.final_state.eccentricity[keep],
                 population.weight[keep],population.entry_boundary[keep])
+        if checkpoint is not None:
+            payload = dict(zip(ledger_names, ledgers))
+            payload.update(identity=np.array(json.dumps(identity, sort_keys=True)),
+                           rng_state=np.array(json.dumps(rng.bit_generator.state)),
+                           next_boundary=np.array(k+1), time_edges_myr=times)
+            for i, population in enumerate(populations):
+                for field, value in zip(('a', 'e', 'weight', 'entry'),
+                        (population.semi_major_axis_pc, population.eccentricity,
+                         population.weight, population.entry_boundary)):
+                    payload[f'population_{i}_{field}'] = value
+            temporary = checkpoint.with_suffix(checkpoint.suffix + '.partial')
+            with temporary.open('wb') as stream:
+                np.savez_compressed(stream, **payload)
+            temporary.replace(checkpoint)
         if progress_callback is not None and k < nsteps:
             progress_callback(k+1,nsteps)
     return CohortShellMergerHistory(
