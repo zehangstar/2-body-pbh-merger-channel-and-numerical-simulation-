@@ -23,6 +23,7 @@ GRAVITATIONAL_CONSTANT_KPC_KM2_S2_MSUN = 4.30091e-6
 KILOPARSEC_IN_PC = 1000.0
 AU_PER_PC = 206264.80624709636
 VIRIAL_OVERDENSITY = 200.0
+VELOCITY_RADIUS_STRATEGIES = ("midpoint", "outer_boundary")
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class HaloShellState:
     scale_density_msun_pc3: float
     shell_boundaries_pc: np.ndarray
     shell_midpoints_pc: np.ndarray
+    velocity_radius_strategy: str
     velocity_evaluation_radii_pc: np.ndarray
     shell_density_msun_pc3: np.ndarray
     environment_density_msun_pc3: np.ndarray
@@ -265,6 +267,33 @@ def binary_single_velocity_dispersion_km_s(
     )
 
 
+def shell_velocity_evaluation_radii_pc(
+    shell_boundaries_pc,
+    shell_midpoints_pc,
+    strategy="midpoint",
+):
+    """返回局部环境速度的空间评价半径，单位为 pc。
+
+    ``midpoint`` 在每个壳层的径向算术中点评价，作为主体模拟默认规则；
+    ``outer_boundary`` 在各壳层外边界评价，保留此前多壳实现作为复现与
+    灵敏度对照。该选择只影响 ``M(<r_v)``、``v_disp`` 与由其导出的
+    ``a_h``，不会改变中点密度、壳边界或积分壳质量。
+    """
+    shell_boundaries_pc = np.asarray(shell_boundaries_pc, dtype=float)
+    shell_midpoints_pc = np.asarray(shell_midpoints_pc, dtype=float)
+    strategy = str(strategy)
+    if strategy not in VELOCITY_RADIUS_STRATEGIES:
+        choices = ", ".join(VELOCITY_RADIUS_STRATEGIES)
+        raise ValueError(f"velocity radius strategy 必须是 {choices} 之一。")
+    if shell_boundaries_pc.ndim != 1 or shell_midpoints_pc.ndim != 1:
+        raise ValueError("壳边界与壳中点必须是一维数组。")
+    if shell_boundaries_pc.size != shell_midpoints_pc.size + 1:
+        raise ValueError("壳边界数必须比壳中点数多 1。")
+    if strategy == "midpoint":
+        return shell_midpoints_pc.copy()
+    return shell_boundaries_pc[1:].copy()
+
+
 def hard_binary_semimajor_axis_pc(
     primary_pbh_mass_msun,
     velocity_dispersion_km_s,
@@ -294,6 +323,7 @@ def build_halo_shell_state(
     model=hc.DEFAULT_HALO_MODEL,
     shell_count=None,
     velocity_mu=0.5,
+    velocity_radius_strategy="midpoint",
     ksi=1.0,
 ):
     """构造一个 ``(M0,z)`` 对应的 binary-single 晕壳层环境。
@@ -304,11 +334,13 @@ def build_halo_shell_state(
 
     ``shell_count`` 默认按论文的现今质量分级选择，也可为诊断显式覆盖。
     ``velocity_mu=0.5`` 是本项目默认速度约定；印刷 Eq. (24) 为 2。
+    ``velocity_radius_strategy="midpoint"`` 默认在壳层中点评价
+    ``v_disp^env``；可显式改为 ``"outer_boundary"`` 以调用此前写死的
+    多壳外边界规则并进行复现对照。
     ``ksi`` 定义 ``rho_env=ksi*rho_NFW``，不修改 NFW 晕质量或几何结构。
-    密度按 Eq. (28) 在壳中点取值。速度按原文 Table III 的位置口径：
-    单球模型取 ``R_vir/2``，多壳模型在各壳外边界 ``R_i`` 求
-    ``M(<R_i)`` 和 ``v_disp``。两个评价半径都显式保存在返回对象中，后续
-    Eqs. (19)、(25) 不需要猜测数组含义。
+    密度始终按 Eq. (28) 在壳中点取值；速度评价位置由上述独立策略决定。
+    所选策略与实际评价半径均显式保存在返回对象中，后续 Eqs. (19)、
+    (25) 不需要猜测数组含义。
     """
     present_day_halo_mass_msun = float(present_day_halo_mass_msun)
     z = float(z)
@@ -366,11 +398,11 @@ def build_halo_shell_state(
     midpoints_pc = 0.5 * (boundaries_pc[:-1] + boundaries_pc[1:])
     boundaries_kpc = boundaries_pc / KILOPARSEC_IN_PC
     midpoints_kpc = midpoints_pc / KILOPARSEC_IN_PC
-    velocity_radii_pc = (
-        midpoints_pc
-        if shell_count == 1
-        else boundaries_pc[1:]  # 论文 Table III 在多壳模型中使用各壳外边界作为速度评价半径，
-    )                           #可能需要在后续计算中使用壳层中点处速度
+    velocity_radii_pc = shell_velocity_evaluation_radii_pc(
+        boundaries_pc,
+        midpoints_pc,
+        strategy=velocity_radius_strategy,
+    )
     velocity_radii_kpc = velocity_radii_pc / KILOPARSEC_IN_PC
 
     shell_density_msun_kpc3 = rho_nfw(
@@ -411,6 +443,7 @@ def build_halo_shell_state(
         ),
         shell_boundaries_pc=boundaries_pc,
         shell_midpoints_pc=midpoints_pc,
+        velocity_radius_strategy=str(velocity_radius_strategy),
         velocity_evaluation_radii_pc=velocity_radii_pc,
         shell_density_msun_pc3=(
             shell_density_msun_kpc3 / KILOPARSEC_IN_PC**3
@@ -437,6 +470,7 @@ def build_halo_shell_history(
     model=hc.DEFAULT_HALO_MODEL,
     shell_count=None,
     velocity_mu=0.5,
+    velocity_radius_strategy="midpoint",
     ksi=1.0,
 ):
     """返回同一 ``M0`` 轨迹在多个红移上的 ``HaloShellState`` 元组。"""
@@ -459,6 +493,7 @@ def build_halo_shell_history(
             model=model,
             shell_count=fixed_shell_count,
             velocity_mu=velocity_mu,
+            velocity_radius_strategy=velocity_radius_strategy,
             ksi=ksi,
         )
         for redshift in redshifts

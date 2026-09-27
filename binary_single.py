@@ -5,8 +5,8 @@
 这里仅返回原始 Monte Carlo 事件，不进行人口重加权或 HMF 积分。
 
 论文原文印刷 Eq. (24) 对应 mu=2；Table III 诊断更接近 mu=0.5。
-本项目以 Prada12-HMF、mu=0.5、ksi=1 为默认配置，任何表格匹配分支
-必须在调用时显式指定，不能混称论文原始模型。
+本项目以 Prada12-HMF、mu=0.5、壳层中点速度、ksi=1 为默认配置，
+任何表格匹配分支必须在调用时显式指定，不能混称论文原始模型。
 """
 
 from dataclasses import dataclass, replace
@@ -41,7 +41,8 @@ class BinarySingleConfig:
 
     ``ksi`` 定义 ``rho_env = ksi * rho_NFW(midpoint)``，不改变
     halo 质量、浓度或 NFW 剖面。``velocity_mu`` 定义
-    ``v_env = sqrt(mu * G * M(<r) / r)``。``ksi`` 与 PBH 的
+    ``v_env = sqrt(mu * G * M(<r) / r)``；``velocity_radius_strategy``
+    独立选择该速度在壳中点或壳外边界评价。``ksi`` 与 PBH 的
     单体/双星人口比例是不同参数，不能互相代用。
     """
 
@@ -52,6 +53,7 @@ class BinarySingleConfig:
     fraction_single: float = 0.5
     fraction_binary: float = 0.5
     velocity_mu: float = 0.5
+    velocity_radius_strategy: str = "midpoint"
     ksi: float = 1.0
     global_timestep_myr: float = 200.0
     local_timestep_myr: float = 2.0
@@ -101,6 +103,9 @@ class BinarySingleConfig:
             raise ValueError("sample_count_per_shell_and_step 必须为正整数。")
         if self.integration_method not in ("euler", "adaptive_log_a"):
             raise ValueError("integration_method 必须是 euler 或 adaptive_log_a。")
+        if self.velocity_radius_strategy not in hs.VELOCITY_RADIUS_STRATEGIES:
+            choices = ", ".join(hs.VELOCITY_RADIUS_STRATEGIES)
+            raise ValueError(f"velocity_radius_strategy 必须是 {choices} 之一。")
         if self.eccentricity_growth_model not in ("sesana_endpoint", "sesana_taper", "zero"):
             raise ValueError("未知 eccentricity_growth_model。")
         if not isinstance(self.integration_max_attempts, int) or self.integration_max_attempts <= 0:
@@ -130,6 +135,7 @@ def build_shell_environment(present_day_halo_mass_msun, z, config=None):
         primary_pbh_mass_msun=config.primary_mass_msun,
         model=config.halo_model,
         velocity_mu=config.velocity_mu,
+        velocity_radius_strategy=config.velocity_radius_strategy,
         ksi=config.ksi,
     )
 

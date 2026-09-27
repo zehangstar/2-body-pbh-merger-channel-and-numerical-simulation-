@@ -22,7 +22,16 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / 'pic_and_data/rate_evolution_diagnosis'
 BASE = ROOT / 'pic_and_data/r_bs_perhalo'
 META = json.loads((BASE / 'run_config.json').read_text(encoding='utf-8'))
-CFG = bs.BinarySingleConfig(**META['config'])
+
+
+def load_saved_config(values):
+    """读取旧输出；缺失的新字段按生成当时的多壳外边界规则解释。"""
+    values = dict(values)
+    values.setdefault('velocity_radius_strategy', 'outer_boundary')
+    return bs.BinarySingleConfig(**values)
+
+
+CFG = load_saved_config(META['config'])
 M0 = META['halo_M0_msun']
 
 
@@ -255,7 +264,7 @@ def cohort_gw_clock_check():
     """Reproduce B/GW terminal deaths by one uninterrupted isolated integration."""
     metadata=json.loads((BASE/'cohort_aged_gw_config.json').read_text(encoding='utf-8'))
     data=dict(np.load(BASE/'cohort_aged_gw.npz'))
-    cfg=bs.BinarySingleConfig(**metadata['config'])
+    cfg=load_saved_config(metadata['config'])
     pop=mc.CohortPopulationConfig(**metadata['population_config'])
     rng=np.random.default_rng(metadata['seed'])
     dist=prior.AppendixDOrbitalDistribution(**metadata['prior'])

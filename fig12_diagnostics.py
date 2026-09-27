@@ -175,7 +175,7 @@ def frozen_sensitivity(n=5000):
     rows=[]
     for z in [12.,3.,0.]:
         base=bs.build_shell_environment(M0,z,cfg)
-        for name in ["baseline","K_taper","K_zero","velocity_midpoint","mu2","ludlow16","prada_rho_eq"]:
+        for name in ["baseline","K_taper","K_zero","velocity_outer_boundary","mu2","ludlow16","prada_rho_eq"]:
             conf=replace(cfg,eccentricity_growth_model={"K_taper":"sesana_taper","K_zero":"zero"}.get(name,"sesana_endpoint"))
             shell=base
             draw=samples
@@ -185,11 +185,9 @@ def frozen_sensitivity(n=5000):
             elif name=="ludlow16":
                 conf=replace(conf,halo_model="ludlow16")
                 shell=bs.build_shell_environment(M0,z,conf)
-            elif name=="velocity_midpoint":
-                radius=base.shell_midpoints_pc/1000
-                mass=hs.nfw_enclosed_mass(radius,base.scale_radius_pc/1000,base.scale_density_msun_pc3*1e9)
-                velocity=hs.binary_single_velocity_dispersion_km_s(radius,mass,mu=.5)
-                shell=replace(base,velocity_dispersion_km_s=velocity,hard_semimajor_axis_pc=hs.hard_binary_semimajor_axis_pc(30,velocity))
+            elif name=="velocity_outer_boundary":
+                conf=replace(conf,velocity_radius_strategy="outer_boundary")
+                shell=bs.build_shell_environment(M0,z,conf)
             elif name=="prada_rho_eq":
                 cosmology=hc.cosmology_for_model(cfg.halo_model)
                 density=prior.matter_density_at_equality_msun_pc3(omega_m0=cosmology['omega_m0'],h=cosmology['h'])
