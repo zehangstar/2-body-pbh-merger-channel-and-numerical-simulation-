@@ -8,13 +8,13 @@
 
 
 
-* **论文原述**：Aljaf & Cholis 的 [Simulating Binary Primordial Black Hole Mergers in Dark Matter Halos](https://arxiv.org/abs/2408.06515v2)，第 IV 节及附录 D、E。本地正文源文件为 [paper.tex](tmp/arxiv_2408.06515v2_source/paper.tex)。
+* **论文原述**：Aljaf & Cholis 的 [Simulating Binary Primordial Black Hole Mergers in Dark Matter Halos](https://arxiv.org/abs/2408.06515v2)，第 IV 节及附录 D、E。本地正文源文件为 [paper.tex](../tmp/arxiv_2408.06515v2_source/paper.tex)。
 
-* **当前实现**：[halostructure.py](halostructure.py)、[p\_a\_j.py](p_a_j.py)、[binary\_single.py](binary_single.py)、[binary\_single\_montecarlo.py](binary_single_montecarlo.py)。
+* **当前实现**：[halostructure.py](../halostructure.py)、[p\_a\_j.py](../p_a_j.py)、[binary\_single.py](../binary_single.py)、[binary\_single\_montecarlo.py](../binary_single_montecarlo.py)。
 
 * **项目扩展 / 推导**：严格联合归一化、Adaptive 积分、有限并合终点，以及 B 的人口供给、晕外老化、轨道继承和事件权重。下文明确说明这些选择，而不声称它们由作者唯一指定。
 
-运行示例见 [R\_bs\_perhalo.ipynb](notebooks/R_bs_perhalo.ipynb)；本次已有数值证据见 [并合率演化诊断报告.md](并合率演化诊断报告.md)。本文解释算法，不重新运行模拟或修改主程序。
+运行示例见 [R\_bs\_perhalo.ipynb](../notebooks/R_bs_perhalo.ipynb)；本次已有数值证据见 [并合率演化诊断报告.md](并合率演化诊断报告.md)。本文解释算法，不重新运行模拟或修改主程序。
 
 当前工作止于单 halo 人口与并合率。B 内部的 “样本权重” 是表达真实系统数所必需的，不等于已经开展跨 halo 的人口重加权或 HMF 积分。
 
@@ -778,7 +778,7 @@ cumulative\_merger\_weight 的第一行是零；population\_balance\_residual �
 
 ## 12. 真实结果作为算法实例，不作为收敛证明
 
-以下读取 2026-09-23 已完成缓存 [cohort\_summary.json](pic_and_data/r_bs_perhalo/cohort_summary.json)，本次仅核对，不新增运行。
+以下读取 2026-09-23 已完成缓存 [cohort\_summary.json](../pic_and_data/r_bs_perhalo/cohort_summary.json)，本次仅核对，不新增运行。
 
 对 $M_0=1.5\times10^6M_\odot$、Prada12-HMF、Strict joint、Adaptive：
 

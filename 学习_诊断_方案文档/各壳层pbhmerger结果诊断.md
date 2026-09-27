@@ -14,7 +14,7 @@
 2. 外壳的高并合计数主要来自严格初态分布中极高偏心率的硬双星，本身的 GW 演化就能产生这些事件；它不是通过微调 halo 浓度能消除的偏差。
 3. 内壳的额外并合强烈依赖 K 在 e>0.9 的延拓。原文未公开足以唯一确定其抽样尾部、K 延拓和 Euler 越界处理的实现，因此不能把某个更贴近原图的诊断分支指定为作者算法。
 
-![修复后的原始累计计数](pic_and_data/fig12_diagnosis/fig12_corrected_raw.png)
+![修复后的原始累计计数](../pic_and_data/fig12_diagnosis/fig12_corrected_raw.png)
 
 ## 2. 固定的模拟口径
 
@@ -83,7 +83,7 @@
 
 论文“丢弃首片、从约 z=10 展示”的陈述对应相邻时间片平均的并合率图。Fig.12 是累计事件数，保留首片。本项目第一片中点约 z=10.13，末边界约 z=8.82。
 
-数据：[原图参考点](pic_and_data/fig12_diagnosis/paper_reference.csv)、[原始水平线段](pic_and_data/fig12_diagnosis/paper_vector_segments.csv)、[标定与源文件指纹](pic_and_data/fig12_diagnosis/paper_reference_metadata.json)。
+数据：[原图参考点](../pic_and_data/fig12_diagnosis/paper_reference.csv)、[原始水平线段](../pic_and_data/fig12_diagnosis/paper_vector_segments.csv)、[标定与源文件指纹](../pic_and_data/fig12_diagnosis/paper_reference_metadata.json)。
 
 ## 4. Euler 失效的具体原因与修复
 
@@ -160,7 +160,7 @@ $$
 - a_stop 在 3、6、60 GM/c^2 之间变化，500 初态的并合数均为 275，失效均为 0，最大事件时间变化约 9.52×10^-12 Myr。
 - 完整 340 万初态再以 rtol=10^-8、时间绝对容差 10^-10 Myr、log(j²) 绝对容差 10^-11 重算，680 个壳层-时间片组合只有 **1 个组合相差 1 个事件**：第 7 片 R2（片首 z=4.03168），643 对 642。总计数差约 4.25×10^-6，相比 Monte Carlo 误差可忽略，但并非宣称逐事件在有限容差下绝对无误。
 
-数据：[收敛表](pic_and_data/fig12_diagnosis/integration_convergence.csv)、[DOP853 逐轨道对照](pic_and_data/fig12_diagnosis/dop853_comparison.csv)、[终止半径对照](pic_and_data/fig12_diagnosis/termination_radius.csv)、[完整运行收敛](pic_and_data/fig12_diagnosis/full_history_convergence.json)。
+数据：[收敛表](../pic_and_data/fig12_diagnosis/integration_convergence.csv)、[DOP853 逐轨道对照](../pic_and_data/fig12_diagnosis/dop853_comparison.csv)、[终止半径对照](../pic_and_data/fig12_diagnosis/termination_radius.csv)、[完整运行收敛](../pic_and_data/fig12_diagnosis/full_history_convergence.json)。
 
 ## 5. 十个壳层的修复结果
 
@@ -198,7 +198,7 @@ $$
 
 标准误差由各片独立 Bernoulli 抽样计数估计，再乘以 400；这个换算不会把 5,000 样本变成真正的 2,000,000 样本运行。主运行的统计误差远小于与原图的偏差。因而先提高到论文生产样本量不会解决当前幅度问题。
 
-数据：[逐壳汇总](pic_and_data/fig12_diagnosis/shell_summary.csv)、[主运行逐片结果](pic_and_data/fig12_diagnosis/strict_counts.csv)、[主运行累计曲线](pic_and_data/fig12_diagnosis/strict_cumulative.csv)。
+数据：[逐壳汇总](../pic_and_data/fig12_diagnosis/shell_summary.csv)、[主运行逐片结果](../pic_and_data/fig12_diagnosis/strict_counts.csv)、[主运行累计曲线](../pic_and_data/fig12_diagnosis/strict_cumulative.csv)。
 
 ## 6. 为什么外壳会出现几乎“硬双星全并合”
 
@@ -214,7 +214,7 @@ GW-only 对照保持完全相同的初始硬双星阈值、抽样序列和时间
 
 方案 A 每片从同一原初分布重新抽样，也会在每一片重新引入短 GW 寿命的双星。这是本次指定的模拟语义。改变全局时间片长度会同时改变重抽次数和每片允许的并合时长，不能简单当作只影响数值积分精度的参数。方案 B 或先演化 halo 外的分布会改变人口模型，本次未引入。
 
-数据：[同初态事件交集与差集](pic_and_data/fig12_diagnosis/paired_event_outcomes.csv)。
+数据：[同初态事件交集与差集](../pic_and_data/fig12_diagnosis/paired_event_outcomes.csv)。
 
 ## 7. 严格初态与 Fig.19 有效先验的差异
 
@@ -243,7 +243,7 @@ GW-only 对照保持完全相同的初始硬双星阈值、抽样序列和时间
 
 原文 Table II 的 a_h 列标题写 au，但 10^12 Msun、R1 行给 1.07×10^-2，且 N_hard=26.523%。若真把该数解释为 au，它小于 Appendix D 的最小半长轴 10^-6 pc，硬双星比例应为零。这是源文档内的单位不一致；上述阈值对照显式采用 pc，不在程序里偷偷改单位。
 
-数据：[初态总体统计](pic_and_data/fig12_diagnosis/prior_summary.json)、[硬双星尾部统计](pic_and_data/fig12_diagnosis/prior_hard_tail.csv)、[有效先验整条历史](pic_and_data/fig12_diagnosis/paper_order_counts.csv)。
+数据：[初态总体统计](../pic_and_data/fig12_diagnosis/prior_summary.json)、[硬双星尾部统计](../pic_and_data/fig12_diagnosis/prior_hard_tail.csv)、[有效先验整条历史](../pic_and_data/fig12_diagnosis/paper_order_counts.csv)。
 
 ## 8. K 的原始拟合没有抄错，但延拓支配内壳
 
@@ -277,9 +277,9 @@ z=12、R1 固定 5,000 初态：端点 K 得到 2,930 个并合，K 衰减为 33
 
 在 z=12 的 R10 中，主设置有 126 次并合，Ludlow16 为 118，mu=2 为 49。即使是这些有实际影响的改动，也远小于主结果与原图的差距。内壳应优先处理 K 的物理标定问题，外壳应优先追查联合分布的尾部与重抽/事件统计定义。
 
-数据：[逐项环境与 K 敏感性](pic_and_data/fig12_diagnosis/frozen_sensitivity.csv)。
+数据：[逐项环境与 K 敏感性](../pic_and_data/fig12_diagnosis/frozen_sensitivity.csv)。
 
-![原图、稳定主模型、GW-only 与先验诊断的对照](pic_and_data/fig12_diagnosis/fig12_diagnostic_comparison.png)
+![原图、稳定主模型、GW-only 与先验诊断的对照](../pic_and_data/fig12_diagnosis/fig12_diagnostic_comparison.png)
 
 ## 10. 误差账本与可验收范围
 
@@ -309,11 +309,11 @@ z=12、R1 固定 5,000 初态：端点 K 得到 2,930 个并合，K 衰减为 33
 
 ## 11. 修改文件、数据和复现方法
 
-- [binary_single.py](binary_single.py)：稳定积分器、明确终止半径、可替换精度；保留 Euler 和端点 K；增加标明用途的 K 敏感性开关。
-- [binary_single_montecarlo.py](binary_single_montecarlo.py)：接入所选积分器、每片进度回调，以及自适应分支的时间步元数据。
-- [fig12_diagnostics.py](fig12_diagnostics.py)：原图矢量提取、积分对照、全历史对照、初态与配对事件、敏感性和绘图入口。
-- [notebooks/fig_12.ipynb](notebooks/fig_12.ipynb)：已执行，展示原图、稳定主运行、逐壳比值和诊断图。默认加载已保存结果并校对参数；设 RUN_MONTE_CARLO=True 可调用主驱动重算。
-- [pic_and_data/fig12_diagnosis](pic_and_data/fig12_diagnosis/)：CSV、NPZ、JSON 和 PNG。旧 pilot 文件保留原名，便于与问题现场比较。
+- [binary_single.py](../binary_single.py)：稳定积分器、明确终止半径、可替换精度；保留 Euler 和端点 K；增加标明用途的 K 敏感性开关。
+- [binary_single_montecarlo.py](../binary_single_montecarlo.py)：接入所选积分器、每片进度回调，以及自适应分支的时间步元数据。
+- [fig12_diagnostics.py](../fig12_diagnostics.py)：原图矢量提取、积分对照、全历史对照、初态与配对事件、敏感性和绘图入口。
+- [notebooks/fig_12.ipynb](../notebooks/fig_12.ipynb)：已执行，展示原图、稳定主运行、逐壳比值和诊断图。默认加载已保存结果并校对参数；设 RUN_MONTE_CARLO=True 可调用主驱动重算。
+- [pic_and_data/fig12_diagnosis](../pic_and_data/fig12_diagnosis/)：CSV、NPZ、JSON 和 PNG。旧 pilot 文件保留原名，便于与问题现场比较。
 
 在项目根目录运行：
 

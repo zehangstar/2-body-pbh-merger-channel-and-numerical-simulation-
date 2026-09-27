@@ -1,0 +1,1097 @@
+                                                                                  The Merger Rate of Primordial Black Holes
+
+                                                                                            Muhsin Aljaf1, ∗ and Ilias Cholis1, †
+                                                                       1
+                                                                           Department of Physics, Oakland University, Rochester, Michigan 48309, USA
+                                                                                                  (Dated: December 16, 2025)
+                                                              The merger rate of primordial black hole (PBH) binaries can be used to understand the source
+                                                            population of the merging black hole binaries observable through gravitational waves (GWs) and also
+                                                            to constrain the possible contribution of PBHs to dark matter. In the literature, the PBH merger
+                                                            rate is calculated analytically, assuming that PBH binaries stay in isolation (i.e., are unperturbed)
+                                                            and evolve solely via GW emission during their entire lifetime. However, if some or all of dark matter
+                                                            consists of PBHs, then as cosmic structures grow, PBH binaries and single PBHs fall inside dark
+                                                            matter halos. In those halos, the PBH binaries’ interactions with their environment significantly affect
+                                                            the subsequent evolution of their orbital properties. In this paper, we present a numerical framework
+arXiv:2512.12227v1 [astro-ph.HE] 13 Dec 2025
+
+
+
+
+                                                            that accurately calculates the total PBH merger rate by combining the evolution of isolated binaries
+                                                            outside halos with the dynamics of binaries inside halos. In our work, we have found that the isolated
+                                                            binary channel is suppressed at low redshifts, and dynamical interactions in halos reshape the merger
+                                                            rate evolution with time, accelerating some mergers. At redshifts of ≲ 2 the total merger rate is a
+                                                            factor of ≃ 50% higher than the results assuming that all PBH binaries effectively stay unperturbed
+                                                            until their merger. Our simulations provide a definitive calculation on the total PBH merger rates,
+                                                            which are currently being probed and constrained from gravitational-wave observations. We make
+                                                            our merger rates publicly available at Zenodo
+
+
+                                                                      I.     Introduction                         into dark matter halos where they will interact with other
+                                                                                                                  objects, including other PBHs, leading to either their
+                                                  Since the first detection of gravitational waves (GWs)          hardening or breaking/ionization. In this work, we refer
+                                               from binary black hole mergers, by the LIGO-Virgo-                 to the binaries that evolve in isolation as unperturbed
+                                               KAGRA (LVK) collaboration [1–3], primordial black holes            binaries.
+                                               (PBHs) in the stellar mass range have regained attention              In our past work [23], we focused on the evolution
+                                               [4–6]. PBHs may have formed before matter-radiation                of PBH binaries inside halos starting at z ≃ 12. We
+                                               equality in the early universe, making them a candidate            showed that dynamical binary-single interactions within
+                                               for dark matter [7, 8]. While most of the LVK-detected             dark matter halos significantly alter the merger rates of
+                                               black hole merger events are of conventional astrophysical         early binaries. However, in our approach, we did not
+                                               origin (see e.g. [2, 9–11]), the presence of PBH mergers in        consider their earlier evolution outside the dark matter
+                                               the observations can not be excluded. If even a fraction           halos. Furthermore, one needs to model the possible
+                                               of these events is primordial, then LVK data can be used           disruption of PBH binaries due to the passing of other
+                                               to constrain the PBHs abundance and contribution to                PBHs. This work aims to bridge the gap between the
+                                               dark matter [4, 5, 12–21].                                         approach of the isolated evolution of unperturbed PBH
+                                                  PBHs can exist in bound binaries and based on when              binaries in Ref. [15], which neglects environmental effects
+                                               these binaries formed, they are classified into two cat-           altogether, and the work of Ref. [23] that focused on
+                                               egories: (i) early binaries that form shortly after PBH            the PBH binaries inside halos. The early PBH binaries
+                                               production during the radiation-dominated era via gravi-           naturally split into two evolutionary paths: binaries that
+                                               tational decoupling of PBH pairs from the Hubble flow              remain outside halos evolving only through purely GW
+                                               and (ii) late binaries that form through GW capture dur-           emission (unperturbed binaries), and binaries that form
+                                               ing close encounters of PBHs inside dark matter halos at           halos and may have interactions with third objects.
+                                               later times (for a review on all formation channels, see              There is a third contribution to the merger rate of
+                                               Ref. [22]). The present-day merger rate of early binaries          PBH binaries: binaries that form through GW two-
+                                               can be calculated analytically [4, 15], assuming these bina-       body captures inside halos during close encounters of
+                                               ries evolve in isolation through GW emission across their          single PBHs. That contribution can be calculated semi-
+                                               lifetime, having small orbital eccentricity, and neglect-          analytically [5, 23]. These binaries merge rapidly due
+                                               ing environmental effects such as interactions with other          to their high eccentricities [24]. Their rates are small
+                                               PBHs inside dark matter halos. These assumptions may               compared to the binary-single channel, but do give the
+                                               be valid for the approximate evaluation of their merger            absolute minimum merger rate, as that rate is indepen-
+                                               rates at high redshifts when PBH binaries are indeed in            dent of the initial conditions of the PBH binaries’ orbital
+                                               isolation. However, at later times, these binaries will fall       properties or their abundance.
+                                                                                                                     In this work, we present a numerically unified frame-
+                                                                                                                  work to derive the proper merger rates of PBHs by ac-
+                                               ∗ muhsinaljaf@oakland.edu
+                                                                                                                  counting for the fraction of PBH binaries outside halos
+                                               † cholis@oakland.edu
+                                                                                                                  that evolve in isolation and the PBH binaries that evolve
+                                                                                                                                2
+
+inside halos. Our framework accounts for three distinct                          A.   Unperturbed binaries
+contributions to the total PBH merger rate: (i) unper-
+turbed binaries that remain outside dark matter halos                Unperturbed binaries are PBH binaries that evolve
+and evolve purely through GW emission, (ii) binaries              in complete isolation via GW emission throughout their
+undergoing binary-single interactions inside dark matter          entire lifetime. These binaries never experience environ-
+halos that experience hardening/softening/ionization ef-          mental effects such as interactions with other PBHs. The
+fects, and (iii) late binaries formed through GW capture          evolution of their semi-major axis a and eccentricity e
+during close encounters in halos.                                 follows the Peters-Mathews equations [26],
+   Our goal is to estimate the total comoving rate of PBH
+as a function of redshift by properly combining these three           da        64 G3
+                                                                            = −          (m1 + m2 ) (m1 · m2 ) F (e) , (2)
+contributions, i.e,                                                   dt GW      5 c5 a3
+                                                                      de        304 G3
+                                                                            = −           (m1 + m2 ) (m1 · m2 ) D(e), (3)
+Rtotal (z) = Runperturbed (z) + Rbinary-single + Rcaptures (z).       dt GW      15 c5 a4
+                                                            (1)
+Throughout this paper, we assume that PBHs constitute             where G is the gravitational constant, c the speed of
+all of the dark matter (i.e., fPBH = 1) unless stated             light, and m1 and m2 are the component masses of the
+otherwise. Limits from GW searches do give fPBH ≪ 1,              binaries. Functions F (e) and D(e) account for the eccen-
+                                                    2             tricity dependence of the orbital properties’ evolution (see
+but as the merger rates are proportional to fPBH        , the
+scaling is easy to re-evaluate as we show at the end of           appendix A).
+this work. We use the cosmological parameters from                   To compute the comoving merger rate, we sample
+Planck [25].                                                      Nsample = 5 × 105 PBH binaries at formation redshift
+   Our paper is organized as follows: Section II details the      z = 3400, drawing initial parameters (a, e) from the theo-
+three PBH merger channels. We present the methodology             retically motivated joint distribution of Refs. [27, 28](see
+used to compute the merger rates of unperturbed binaries          also [4, 15]). We evaluate the number of mergers at
+and of binaries that later reside inside dark matter halos,       timesteps of every dt = 200, Myr, while we numerically
+building on our previous work in Ref. [23]. We also adopt         solve Eqs. (2)–(3) at every dtlocal = 0.5, Myr (for z > 35
+the direct-capture merger rates derived in Ref. [23]. In our      we use smaller dtlocal ). A binary in our samples is consid-
+simulations, we track in total billions of PBH binaries to        ered merged when its semi-major axis satisfies a ≤ 3Rs ,
+take into account for both the hardening and the softening        where Rs is the Schwarzschild radius of the binary.
+effects binary-single interactions can have on the PBH               The comoving merger rate of unperturbed PBH binaries
+binaries. The impact of such interactions is environment-         with a monochromatic mass distribution at mPBH during
+dependent. They depend on the total mass of the dark              the time interval (t, t + dt) is ,
+matter host halo, the location of PBH binaries within
+                                                                      Runperturbed (t) = fDM outside (t) · fPBH binaries (t)
+that halo, the moment those PBH binaries became part of
+a dark matter halo and how that halo grew in time. Our                                      f 2 · ρDM · S(t)
+                                                                                           × PBH             ,                 (4)
+simulations take all those effects into account, allowing                                      2 mPBH dt
+us to provide a definitive calculation of the PBH merger
+rates. In section III, we present our results for the merger      with the fraction of binaries merging during (t, t + dt)
+rates. We find that at high redshifts the merger rate             evaluated as S(t) = Nmerge (t)/Nsample , where Nmerge (t)
+is dominated by the unperturbed binaries, as should be            is the number of mergers occurring between (t, t + dt)
+expected, with a gradual increase in the contribution to          in our fixed sample. fDM,outside (t) quantifies the frac-
+the total rate from binaries that further hardened inside         tion of dark matter outside halos (see Appendix B for
+dark matter halos. At redshifts ≲ 2 the total merger rate         details), and fPBH,binaries is the initial fraction of PBHs
+is about a factor of 50% higher than the usually quoted           in binaries at formation. ρDM represents the comoving
+rates based on the approximation of all PBH merging               dark matter density. Note that Ref. [15] calculates this
+binaries evolving unperturbed. In Section IV, we give our         rate analytically, making the assumption that the binaries
+conclusions and discuss future prospects. Our rates are           are circular, or have very small eccentricities during their
+publicly available at Zenodo.                                     evolution. Instead, we use a complete numerical approach
+                                                                  to solve the system of Eqs. (2)-(3).
+                                                                     Using this setup, we evolve the PBH binaries from their
+                                                                  formation taken to be at z = 3400 to the present day
+                                                                  z = 0, covering an available time of tavailable = 13.78 Gyr.
+               II.   PBH merger channels
+                                                                  We present the results of our numerical simulation for
+                                                                  the comoving merger rate of unperturbed binaries in
+   In this section, we compute comoving PBH merger rates          Fig. 1, assuming an initial PBH binary fraction of
+from three channels: unperturbed binaries evolving in             fPBH,binaries (z = 3400) = 0.5. The red dash-dotted curve
+isolation, binaries experiencing binary-single interactions       shows the comoving merger rate of unperturbed binaries
+in halos, and GW captures from close encounters in halos.         calculated using Eq. (4). For comparison, the gray dashed
+                                                                                                                                                                    3
+
+curve represents the case where all PBH binaries remain                                                   on the local density and velocity dispersion of the region
+unperturbed throughout their lifetime, corresponding to                                                   where the binary resides within the halo, which deter-
+fDM,outside (z) = 1 in Eq. (4). This case is consistent with                                              mines whether a binary is hard or soft relative to its
+the results of Ref. [15]1 . The blue solid curve (right y-                                                environment.
+axis) shows the fraction of dark matter (and thus PBH
+binaries) residing outside virialized halos as a function of
+redshift, fDM,outside (z). The suppression of the comoving                                                         1.   Binary classification and its evolution
+merger rate due to the decreasing fraction of PBH binaries
+outside halos becomes important for z ≲ 10.                                                                  The nature of binary-single interactions depends crit-
+                                                                                                          ically on whether a binary is classified as hard or soft
+                            107      Runperturbed with fDM outside (z)             1.0
+                                                                                                          relative to its local environment in the halo. Following
+                                     Runperturbed with fDM outside (z) = 1
+                                                                                                          Heggie [29], we define the critical semi-major axis for hard
+ Merger rate [Gpc−3 yr−1]
+
+
+
+
+                                     fDM outside (z)                                                      binaries as,
+                                                                                   0.8
+                            106                                                                                                              G m1 m2
+
+
+
+
+                                                                                         fDM outside(z)
+                                                                                                                        a ≤ ah (r, t) =         env (r, t)2 ,      (5)
+                                                                                                                                          2 m3 vdisp
+                                                                                   0.6
+                                                                                                                  env
+                                                                                                          where vdisp (r, t) is the dispersion velocity of the halo at
+                            105                                                                           distance r from the center of the halo at time t and m3
+                                                                                   0.4
+                                                                                                          is the mass of the interacting third object PBH. Since
+                                                                                                          ah depends on r and t, binaries can transition from hard
+                            104                                                    0.2                    to soft as the halo evolves. The hard binaries become
+                                                                                                          harder (shrink) under binary-single interactions, while
+                              10−2              10−1      100                101                          soft binaries may soften (widen) or be disrupted (ionized)
+                                                   Redshift(z)                                            according to Heggie-Hills law [29].
+                                                                                                             Within a given halo, we divide the evolution of PBH
+                                                                                                          binaries into three regimes: hard, soft, and intermediate.
+FIG. 1. The comoving merger rate of unperturbed early PBH                                                 The third of these regimes corresponds to binaries near
+binaries outside halos assuming fPBH binaries (z = 3400) = 0.5
+                                                                                                          the hard-soft boundary.
+and mPBH = 30, M⊙ . The red dashed-dotted curve shows
+the comoving merger rate of unperturbed binaries rescaled                                                    1. In the hard regime where a ≤ ah , we evolve binaries
+by the actual fraction of dark matter present outside ha-
+                                                                                                                via both binary-single hardening and GW emission
+los fDM,outside (z), while the gray dashed curve takes all
+PBH binaries to remain in isolation (unperturbed) setting
+                                                                                                                as [29, 30],
+fDM,outside (z) = 1. The blue solid curve (right y-axis) shows
+the fraction of dark matter outside halos as a function of
+                                                                                                                  da     G H ρenv (r, t) 2 da
+                                                                                                                     = −    env (r, t) a + dt    ,                 (6)
+redshift.                                                                                                         dt       vdisp              GW
+                                                                                                                  de     G H K(r, t) ρenv (r, t)    de
+                                                                                                                     = +      env                a+       .        (7)
+                                                                                                                  dt         vdisp (r, t)           dt GW
+                              B.     Binary-single interactions in halos                                        H is √ the hardening rate fixed at H = 7.6 · B with
+                                                                                                                B = 3/2 and K is eccentricity growth rate deter-
+  The binary-single interaction channel accounts for                                                            mined by three-body scattering experiments [31, 32].
+PBH binaries that fall into dark matter halos                                                                   The factor B accounts for the fact that both the
+and experience environmental effects such as harden-                                                            single PBHs and the PBH binaries have the same
+ing/softening/ionizations. This processes starts around                                                         velocity dispersion at a given radius r within a
+z ≈ 12 when the unperturbed PBH binaries that have                                                              halo. ρenv (r, t) is the mass density of the local en-
+not merged and the single PBHs start to cluster and form                                                        vironment (including both single PBHs and PBH
+dark matter halos. Inside the halos, the PBH binaries                                                           binaries) where the binary resides. We assume that
+can interact with single PBHs and wide PBH binaries                                                             this density follows the Navarro–Frenk–White pro-
+via binary-single interactions 2 . Such interactions depend                                                     file [33].
+                                                                                                             2. In the intermediate regime where ah < a ≤ 1.81ah ,
+                                                                                                                we evolve the binaries purely via GW emission using
+1 Note that our rate is lower by a factor of 2 than Ref. [15] due to                                            Eqs. (2) and (3). We treat such binaries as neither
+  the fact that we set fPBH,binaries = 0.5 instead of 1.                                                        soft nor hard. There is no clear boundary between
+2 While the interaction between two PBH binaries is not a binary-
+                                                                                                                hard and soft binaries.
+        single interaction, in almost all instances, at least one of the
+        binaries is wide enough that the tighter of the two binaries effec-                                  3. Finally in the soft regime where a > 1.81ah , binaries
+        tively interacts with the PBH closer to its center of mass.                                             might be softened by interacting with other PBHs
+                                                                                                                                                                                                  4
+
+      and binaries. We evolve such binaries by [30],
+
+                                                                                10−2
+                   r
+       da            π G ρenv (r, t)
+           = +16       B env           · (ln Λ) · a2
+       dt            3    vdisp (r, t)
+                                                                                10−3
+               da
+             +        and                                   (8)
+
+
+
+
+                                                                                                                                                                  Age of Universe
+               dt GW                                                                                           M (z = 0) = 1.0 × 1012 M
+                                                                                10−4
+
+
+
+
+                                                                       a (pc)
+                                                                                                               a0 = 1.032000 × 10−2 pc
+                                                                                                               e0 = 0.99999
+                 r
+        de         π G K ρenv (r, t)                                                                           zbinary−formation = 3400
+           = −16     B               · (ln Λ) · a
+        dt         3      env (r, t)
+                         vdisp                                                  10−5
+                     de                                                                  GW-only
+                 +         ,                                (9)                 10−6     zentry = 12, shell i = 5
+                     dt GW                                                               zentry = 12, shell i = 7
+                                                                                         zentry = 4, shell i = 5
+                                                                                         zentry = 4, shell i = 7
+
+      where                                                                     10−7 3
+                                                                                   10                                                           104
+                                   env                                                                               Time (Myr)
+                                a vdisp (r, t)2
+                      Λ = 1.1                     .        (10)
+                                    Gm1
+      Soft binaries can also get disrupted or ionized by
+                                                                                10−3
+      interacting with other single PBHs and PBH bina-
+      ries. We estimate the ionization and non-disruption
+                                                                                10−4
+
+
+
+
+                                                                                                                                                                                Age of Universe
+      probabilities of such binaries without dynamical                                                          M (z = 0) = 1.0 × 107 M
+
+
+
+
+                                                                       a (pc)
+      evolution (see Appendix C for details).                                                                   a0 = 1.556400 × 10−3 pc
+                                                                                                                e0 = 0.99990
+                                                                                10−5                            zbinary−formation = 3400
+
+
+
+           2.   Halo effects on a single PBH binary                                                                  GW-only
+                                                                                10−6                                 zentry = 12, shell i = 5
+                                                                                                                     zentry = 12, shell i = 7
+
+   The evolution of a PBH binary is determined by when                                                               zentry = 4, shell i = 5
+                                                                                                                     zentry = 4, shell i = 7
+it enters a halo and where within the halo it resides.                          10−7 3
+In Fig. 2, we present examples of a few PBH binaries                               10                                                            104
+                                                                                                                     Time (Myr)
+formed at z = 3400, which initially evolved via GW
+emission (Eqs. (2) and (3)) and then entered a halo at
+zentry . From zentry to z = 0, the binaries are placed
+in different halos based on the halo mass function at                           10−3
+zentry . We show examples for binaries that entered a dark
+matter halo mass, which by redshift z = 0 evolved into a
+                                                                                10−4
+
+
+
+
+                                                                                                                                                       Age of Universe
+M = 1012 M⊙ halo (top panel) and a M = 107 M⊙ halo                                                              M (z = 0) = 1.0 × 107 M
+                                                                       a (pc)
+
+
+
+
+(middle and bottom panels). For such halos, we evaluate                                                         a0 = 1.535500 × 10−3 pc
+                                                                                                                e0 = 0.99989
+                                  env
+the environmental conditions vdisp    (r, t) and ρenv (r, t), in                10−5                            zbinary−formation = 3400
+
+a sequence of ten spherical shells (see Ref. [23] for more
+details).                                                                                                            GW-only
+
+   To see how the redshift of entry and local environmental
+                                                                                10−6                                 zentry = 12, shell i = 5
+                                                                                                                     zentry = 12, shell i = 7
+                                                                                                                     zentry = 4, shell i = 5
+effects in the halo affect the binary evolution we show                                                              zentry = 4, shell i = 7
+examples for binaries placed in some of the intermediate                        10−7 3
+                                                                                   10                                                           104
+shells, i = 5 and i = 7 (at approximately 1/10th the Virial                                                          Time (Myr)
+radius), entering those halos at early times (zentry = 12)
+in their growth, or at a time when the majority of dark            FIG. 2. Examples (colored dashed, dotted, and dot-dashed
+matter is already inside halos (zentry = 4). Inside the halo,      lines) of how binary-single interactions inside dark matter halos
+we evolve binaries according to their type with respect to         can significantly alter the merger timescale for PBH binaries
+the halo: hard binaries via Eqs. (6)–(7), soft binaries via        compared to the assumption that those binaries evolve in
+Eqs. (8)–(9), and intermediate binaries via GW emission            isolation (black solid lines). The top panel gives examples
+alone. In the top panel, we show how for a PBH binary              of binary-single interactions softening a binary and delaying
+that would evolve only via GW emission and would merge             its merger. The middle and bottom panels show instead
+                                                                   examples of binary-single interactions causing hardening and
+at 11.1 Gyr (black line), softening can delay its merger to
+                                                                   accelerating a binary’s merger. We give examples of different
+the point well beyond the age of the universe (blue dashed         PBH binary’s redshift of entry into the dark matter halo
+line). In the middle panel, we show how hardening can              (zentry ) and different local environmental assumptions (shell
+instead accelerate the merger timescale from 12.8 Gyr              of the dark matter halo). See text for more details.
+(black line) to a timescale that can be several Gyr less
+(as the blue dashed line). That has implications on the
+                                                                                                                                5
+
+expected PBH merger rate at redshifts to be probed by
+future GW observatories. Finally, in the bottom panel,
+we show how a PBH binary that via GW emission only
+would still not have merged (black line), may be merging
+just now (red dot-dashed line) or have already merged
+at a much earlier time (blue dashed line). Such binaries,
+in fact, are quite common and responsible for the higher
+merger rate of PBHs that we find in this work compared
+to the calculation of purely unperturbed binaries (see
+[4, 15]).
+
+
+ 3.   Halo Effects on Population of Merging PBH Binaries
+
+   In this section, we study how halo environments affect
+the merger times of early PBH binaries. We simulate
+5 × 106 PBH binaries formed at z = 3400, of which
+9.1 × 104 will merge via GW emission in isolation, i.e.,
+without any further binary-single interactions, between
+z = 12 and z = 0.
+   Fig. 3, shows the distribution of semi-major axes ainit
+and eccentricities 1 − einit at z = 12, for PBH binaries
+that formed at z = 3400 and have merged by z = 0.
+The subscript “init” refers to the initialization of the sim-
+ulation at z = 12, from which point on PBH binaries
+gradually form dark matter halos. The top panel displays
+binaries that evolve in isolation via GW emission and
+merge by today, i.e., assuming foutside (z) = 1. The bot-
+tom panel shows binaries that merge by z = 0, including
+the effects of binary-single interactions inside halos. For
+the bottom panel, we clarify again that our PBH bina-
+ries only gradually fall inside these dark matter halos 3 .        FIG. 3. The distribution of the semi-major axes ainit and
+Those binaries include binaries that would have merged             eccentricities 1 − einit at z = 12, for PBH binaries that merge
+anyway due to purely GW emission within the age of                 by z = 0. Top: all binaries are evolved in isolation via GW
+the universe, but also include binaries that in isolation          emission. Bottom: binaries evolved for simplicity all in a halo
+would otherwise merge over a much longer timescales                of mass M = 106 M⊙ in one of its mid-radial distance shells
+(in some cases even ∼ 104 Gyr). Such binaries (yellow              (i = 3 out of 5 shells). There are binaries that would merge
+dots), mostly include binaries with high initial eccentric-        over very long timescales (tmerge ∼ 104 Gyr) in isolation but
+ities, 1 − einit < 10−3 and large initial semi-major axes,         merge by z = 0 due to dynamical interactions inside the halo.
+ainit > 10−4 pc. Binary–single interactions inside the             The binaries begin to fall inside the dark matter halo around
+                                                                   z = 12 but continue to grow the halo up to z = 0 (see text for
+halos affect the evolution of these binaries, increasing the
+                                                                   more details).
+fraction of binaries that merge by today. The color code
+in Fig. 3, gives the time of merger from the beginning of
+the simulation. Darker dots represent mergers occurring
+earlier in the simulation time.                                    90830 such binaries (see also top panel of Fig. 3). For the
+   Fig. 4 presents histograms of merger times for PBH              remaining lines of these figures, for simplicity we take the
+binaries, out of an initial sample of 5×106 binaries formed        PBH binaries to gradually fall inside a dark matter halo
+at z = 3400 with the same original orbital distribution            that by z = 0 has grown to a mass of M (z = 0) = 106 M⊙ .
+properties. Of those 4.75×106 have not merged by z = 12            In both panels, the red dashed line takes into account the
+when we start our simulations of the dark matter halo              evolving fDM outside (z) < 1, and gives Nmerg out = 52770
+effects. The green histogram corresponds to unperturbed            PBH binaries merging outside of the dark matter halo,
+merged binaries assuming foutside (z) = 1, without any             i.e., before falling in. In the top panel, we show first the
+binary-single interactions inside any halo. There are              distribution of merger times assuming all PBH binaries
+                                                                   experience the same environmental conditions once falling
+                                                                   in, i.e., dark matter density and velocity dispersion of a
+                                                                   mid-radial distance shell (i = 3). For such an environment,
+3 Whether a binary enters a halo is determined probabilistically
+                                                                   there is a detectable (more than 10%) increase in the
+  via penter ; for details, see Eq.(D1) of Appendix D.             total number of mergers most importantly at the last
+                                                                                                                                                                  6
+
+few Gyr of the simulation time. The red solid line gives                                              properly calculates the weight wi of the merger events
+the histogram of binary mergers taking place inside the                                               of the binaries in each shell using wi = Mi /Mh , where
+halo. There are Nmerg in = 49659 such binaries. Finally,                                              MPi is the mass of shell i and Mh the total halo mass
+the purple line shows the combined histograms of PBH                                                  ( i Mi = Mh ). Even after accounting for the outer shells
+binary mergers outside and inside the dark matter halo                                                where the PBH binaries are mostly unperturbed, there
+Nmerg tot = Nmerg out + Nmerg in = 102429. The hardening                                              is a detectable increase in the number of PBH mergers
+of binaries inside halos increases the total number of                                                (Nmerg tot = 94661) due to binary-single interactions. In
+merged binaries and shifts the merger-time distribution to                                            Appendix D, we give similar results to those of Figs. 3
+shorter times. At early times, the unperturbed simulation                                             and 4 for alternative halo environments.
+(green) and the full simulation (purple) agree, but starting
+at z ≈ 5 the full simulation gives an increased number
+of PBH mergers. This shows the significance the local
+environments have in increasing the PBH merger rates.
+                                                                                                                       4.   Merger Rate Per Halo
+
+                      12000         Inside halo                                                          To estimate the comoving merger rate from binary-
+                                    Unperturbed (fDM,outside (z))
+                                    Total = inside-halo + unperturbed (fDM outside (z))               single interactions in halos of all masses, we first calculate
+                      10000         Unperturbed (fDM outside = 1)                                     the merger rate per halo. As we have mentioned earlier,
+                                                                                                      the binaries’ evolution in dense environments significantly
+  Number of mergers
+
+
+
+
+                                Halo-evolved PBH Binaries
+                       8000     M(z = 0) = 106 M                                                      depends on the local density and dispersion velocity using
+                                Shell i : 3
+                                Nmerg in = 49659                                                      in Eqs. (6)-(9). We follow the approach of our previous
+                                Nmerg out = 52770
+                       6000     Nmergtotal = 102429                                                   work [23], where we divide each halo into a number of
+                                                                                                      i mass shells with characteristic radius r = ri from the
+                       4000                                                                           center of the halo, evolving each shell’s environmental
+                                                                                                      properties with time according to the halo mass accretion
+                       2000                                                                           history [34] (see Ref. [23] for details). Inside each shell of
+                                                                                                      a given halo, we evolve a gradually increasing number of
+                          0
+                              100                101               102                    103   104
+                                                                                                      PBH binaries Nsample,i (t) from z = 12 to today (z = 0),
+                                                               tmerge (Myr)                           over the available total time of tavailable ≃ 13.43 Gyr. This
+                                                                                                      sample contains both hard, soft, and those binaries that
+                                                                                                      are in the intermediate regime.
+                      10000         Inside halo
+                                    Unperturbed (fDM,outside (z))                                        Since the binary-single interactions can change the
+                                    Total = inside-halo + unperturbed (fDM outside (z))               timescale to merger by several Gyr, either decreasing it or
+                                    Unperturbed (fDM outside = 1)
+                       8000                                                                           increasing it (see Fig. 2), we evolve only the population of
+  Number of mergers
+
+
+
+
+                                Halo-evolved PBH Binaries                                             PBH binaries that would merge via GW emission only (i.e.,
+                                M(z = 0) = 106 M
+                       6000     All shells, mass weighted                                             unperturbed) between z = 12 and a forward evolution
+                                Nmerg in = 46550
+                                Nmerg out = 48111                                                     into the future of 100 times the age of the universe. Out
+                                Nmerg,total = 94661                                                   of 5 × 106 PBH binaries formed at z = 3400, 2.49 × 105
+                       4000                                                                           binaries fall in that class. However, we keep track of the
+                                                                                                      entire population of PBH binaries at all times. At any
+                       2000                                                                           time, we record the number of binaries that are inside a
+                                                                                                      halo versus outside. The probability for a PBH binary
+                                                                                                      to be inside a spherical shell i of dark matter mass Mi
+                          0 0
+                          10                  101                102                      103   104   is finside (Mi , t). By tracking finside (Mi , t), we can also
+                                                               tmerge (Myr)                           track how many binaries enter a dark matter halo at each
+                                                                                                      of its shells, at any given timestep. See Appendix D, for
+FIG. 4. Histogram of the merger times for different PBH binary
+                                                                                                      more details. As the growth with time of dark matter
+populations. We show results for tmerge up to the age of the
+universe. Green: unperturbed binaries evolved in isolation,
+                                                                                                      halos depends on their final mass, these probabilities can
+assuming fDM outside (z) = 1. Solid red: binaries evolved inside                                      not directly be evaluated simply by tracking foutside (z)
+halos, showing the acceleration of mergers due to binary–single                                       shown in Fig. 1, which tracks the total amount of dark
+interactions. Dashed red: unperturbed binaries evolved in                                             matter outside any halo of any mass (see for more details
+isolation properly weighted by fDM outside (z). Purple: total                                         on that Appendix B).
+population once the dark matter halo evolution is considered.                                            During the time interval (t, t+dt), we count the number
+                                                                                                      of binary mergers Nmerge,i (t) and ionizations Nion,i (t).
+  In the bottom panel of Fig. 4, we account for the fact                                              The remaining binaries in the samples (that didn’t merge
+that our simulated dark matter halos are divided into                                                 or get ionized) are considered to “survive” Nsurv,i (t) and
+several shells to account for the radially varying dark                                               will be further evolved. The ratio of binaries that merged
+matter densities and velocity dispersions. This panel                                                 or got ionized during the step dt at time t in the shell i
+                                                                                                                                                     7
+
+is,                                                                                       merger rate of each halo. The comoving merger rate from
+                                                                                          binary-single interactions can be obtained via integrating
+                                      (E)           Nevent=E,i (t)                        over the halo mass function [35],
+                                    Si      (t) =                  ,               (11)
+                                                    Nsample,i (t)
+                                                                                                                 Z Mmax
+                                                                                                                                       dn(z)
+                                                                                                                           binary−single
+where Nevent=E,i (t) is the number of events of type                                      Rbinary−single (z) =            Rhalo          (M, z)
+                                                                                                                                             dM ,
+                                                                                                             Mmin                       dM
+E (merger or ionization) out of a sample with size
+                                                                                                                                             (14)
+Nsample,i (t) for shell i. Using these fractions, the actual
+                                                                                          where dn(z)/dM is the halo mass function giving the
+merger/ionization rate of the simulation is,
+                                                                                          number density of halos per unit mass (see Eq.(B3) in
+                            (E)             (E)           NPBH binaries,i (t)             Appendix B). We take the limit of our integration from
+                        Ri        (t) = Si        (t) ×                       .    (12)   Mmin = 104 M⊙ and Mmax = 1015 M⊙ .
+                                                                dt
+NPBH binaries,i (t) is the actual number of PBH binaries
+inside shell i at time t. This is evaluated by tracking                                                      C.     GW Captures
+the dark matter mass at each spherical shell i in a given
+halo. The total merger rate per halo form binary-single                                      Two-body (direct) GW captures between single PBHs
+interactions is obtained by summing the merger rates                                      lead to the formation of new binaries (late binaries) with
+across all shells,                                                                        rapid subsequent mergers [5]. The comoving merger rate
+               binary-single
+                                   X (merge)                                              of direct captures can be calculated semi-analytically and
+             Rhalo           (t) =  Ri       (t).    (13)                                 has a minor contribution to the total comoving merger
+                                                           i                              rate of PBHs [5, 23]. For the direct capture rate, we use
+   At each timestep, the actual number of binaries inside                                 the updated result of [23] that was roughly in agreement
+shell i, NPBH binaries,i (t) is updated by accounting for the                             with Ref. [5].
+binaries that survived mergers or ionizations Sisurv (t) ×
+NPBH binaries,i (t) and adding new binaries entering from
+outside, Nnew,i (t + dt) due to the mass growth of each                                                          III.   RESULTS
+shell. See Appendix E.
+   In Fig. 5, we show the merger rate per halo as a function                                 We provide the merger rate from each channel, namely:
+of redshift in units of yr−1 for a halo with mass M(z =                                   unperturbed binaries outside of dark matter halos, bi-
+0) = 1.15 × 1012 M⊙ . The dashed spiky blue curve is                                      naries that merge inside dark matter halos and undergo
+the merger rate per halo of binaries that undergo binary-                                 binary-single interactions, and binaries created from di-
+single interactions, obtained from our numerical halo                                     rect GW captures. We also show the proper total rate of
+simulations. We use Eq.(13) to obtain the rate per halo.                                  PBHs.
+The solid line is the spline fit of the same curve.                                          In Fig. 6 (top panel), we present the merger rate per
+                                                                                          halo of the binary–single-interaction channel for five dif-
+                                                                                          ferent halos with present-day masses between 104 and
+                                                                                          1015 M⊙ assuming a monochromatic PBH mass distri-
+                                                                                          bution of mPBH = 30 M⊙ . We present how these rates
+                                                                                          evolve with redshift as the host halos grow. As each halo’s
+                                                                                          density and velocity dispersion profiles evolve in their own
+      Rhalo (yr−1)
+
+
+
+
+                     10−3                                                                 manner, the impact of the binary-single interaction terms
+                                                                                          in Eqs. (6)-(9) is affected differently. This is reflected to
+                                                                                          the per halo merger rates. For the smaller dark matter
+                                                                                          halos their per halo merger rate slightly drops from z ≃ 3
+                                                                                          to today. For a Milky Way sized dark matter halo (present
+                     10−4                                                                 mass of 1012 M⊙ ) the rate per halo stabilized after z ≃ 2,
+                                     Simulation Data
+                                     Spline fit
+                                                                                          while in the most massive halos the rate continued to
+                                                                                          increase up to our era. This causes deviations from a
+                        10−3             10−2          10−1      100              101     direct linear relationship in the merger rate per halo and
+                                                    Redshift (z)                          its mass i.e. the number of contained PBH binaries.
+                                                                                             As the halo masses grow with time and dark matter
+                                                                                          halos merge with each other, the distribution of dark
+FIG. 5. The merger rate per halo as a function of redshift for                            matter halo masses vastly evolves with time. In the
+a halo with M(z = 0) = 1.15 × 1012 M⊙ . We have assumed                                   bottom panel of Fig. 6, we represent the contribution
+fPBH binaries = 0.5 and fPBH = 1.                                                         of each of these halo masses to the comoving merger
+                                                                                          rate for the binary-single interaction channel. That is
+                                                                                                         binary−single
+  We performed simulations for 45 halos with present-                                     we plot the Rhalo            × M · dn/dM , as a function of
+day masses between 104 and 1015 M⊙ and obtained the                                       redshift, where dn/dM is the number density of halos
+                                                                                                                                                                                                                   8
+
+                                            101                                                            nary fraction of fPBH binaries (z = 12) = 0.5. In that curve,
+                                                                                                           the actual fraction of PBHs inside and outside of halos,
+                                                                                                           fDM outside (z) is properly accounted for. For comparison
+                                           10−1
+                                                                                                           only, the gray dashed curve shows the comoving merger
+        -single (yr−1)
+
+
+                                                                                                           rate of unperturbed binaries following the assumptions of
+                                           10−3         M(z = 0) = 104 M                                   Ref. [15], which is equivalent to fDM,outside (z) = 1 at all
+                                                        M(z = 0) = 106 M
+                                                        M(z = 0) = 109 M
+                                                                                                           times. The red dash-dotted and the gray dashed curves
+                                                −5
+                                           10           M(z = 0) = 1012 M                                  are also shown in Fig. 1. The blue dotted curve shows
+Rbinary
+
+
+
+
+                                                        M(z = 0) = 1015 M                                  the comoving merger rate from binary–single interactions
+ halo
+
+
+
+
+                                                −7                                                         inside halos, including all halo masses from 104 M⊙ to
+                                           10
+                                                                                                           1015 M⊙ , obtained using Eq. (14). The gray dotted curve
+                                           10−9                                                            corresponds to the rate of late-time binaries that form
+                                                                                                           via GW capture of single PBHs inside halos. This rate
+                                                                                                           is calculated semi-analytically and adapted from [23]. It
+                                                10−3            10−2               10−1        100   101   gives only a tiny contribution to the total merger rate.
+                                                                                 Redshift(z)               Finally, the solid green curve shows the total comoving
+                                                                                                           merger rate of PBHs, obtained by summing up all three
+                                 105                                                                       channels using the unperturbed rate with the evolving
+                       · M (Gpc−3 yr−1 )
+
+
+
+
+                                                                                                           fDM outside (z). The comoving rates presented above are
+                                 104
+                                                                                                                                       107
+                                 103
+
+                                                                                                            Merger rate (Gpc−3 yr−1)
+                                                                                                                                       106
+                                 102
+                  · dM
+                    dn
+
+
+
+
+                                                                                                                                       105
+   Rbinary−single
+
+
+
+
+                                                                       4
+                                                       M(z = 0) = 10 M
+                                 101                   M(z = 0) = 106 M                                                                104
+                                                                       9                                                                                Rbinary−single
+    halo
+
+
+
+
+                                                       M(z = 0) = 10 M
+                                                       M(z = 0) = 1012 M                                                               103              Runperturbed with fDM outside (z)
+                                 100                   M(z = 0) = 10   15
+                                                                            M
+                                                                                                                                                        Rcaptures
+                                                                                                                                                        Rtotal = Runpertrubed + Rbinary−single + Rcaptures
+                                                                                                                                       102              Runperturbed with fDM outside (z) = 1
+                                                 −3               −2
+                                           10                10                   10−1         100   101
+                                                                                Redshift(z)                                            101
+                                                                                                                                       100
+FIG. 6. Top: merger rate per halo via the binary–single                                                                                 10−2           10−1          100                                     101
+interaction channel, for halos with present-day masses between
+104 and 1015 M⊙ . Each of those halos grows in size with time
+                                                                                                                                                           Redshift(z)
+(see text for details). Bottom: contribution of each halo mass to
+                                      binary−single
+the comoving merger rate density, Rhalo             ×(M ·dn/dM ),                                          FIG. 7. The comoving merger rate of PBH binaries as a
+as a function of redshift. Low mass halos dominate at high                                                 function of redshift for the different channels. The red dash-
+redshift, while more massive halos increasingly contribute at                                              dotted curve shows the rate from unperturbed binaries outside
+later times, which reflects the hierarchical assembly of dark                                              halos, accounting for the actual fraction of PBHs outside halos.
+matter halos.                                                                                              The gray dashed curve, presented for comparison only, shows
+                                                                                                           the unperturbed rate assuming all PBHs remain outside halos
+                                                                                                           (consistent with Ref. [15]). The blue dotted curve shows the
+per mass per comoving volume. Low-mass halos, which                                                        merger rate from binaries that also underwent binary–single
+at early times contain most of the dark matter already                                                     interactions in halos. The gray dotted curve corresponds to
+inside halos, dominate the rate at high redshifts, while                                                   mergers of late-time binaries formed via GW capture. The
+                                                                                                           green solid curve represents the total comoving merger rate.
+the more massive halos become increasingly important
+at later times, which shows the impact of hierarchical
+                                                                                                           all obtained under the assumption that fPBH = 1 and
+halo formation. In the current era, the rate is dominated
+                                                                                                           fPBH binaries = 0.5, which is very optimistic as the re-
+by the contribution of halos with masses M (z = 0) of
+                                                                                                           cent constraint from LVK data suggests an upper bound
+109 −1013 M⊙ , with however, a still important contribution
+                                                                                                           fPBH ∼ 10−2 (see e.g. [21]). The total comoving merger
+from lower mass halos.
+                                                                                                           rate Rtotal depends to fPBH and fPBH binaries as,
+   In Fig. 7, we present the comoving merger rates from
+all three merger channels as a function of redshift. The                                                                                           2
+                                                                                                                                         Rtotal = fPBH [Rcaptures + 2 fPBH binaries
+red dash-dotted curve represents the proper comoving                                                                                              ×(Runperturbed + Rbinary−single )].                        (15)
+merger rate of unperturbed binaries that reside outside
+halos and evolve through GW emission only, over their                                                      The factor of 2 in that equation is because the
+                                                                                                            binary-single
+entire lifetime. The rate is obtained assuming an initial bi-                                              Rhalo          and Runperturbed components are evaluated
+                                                                                                                                                                        9
+
+for fPBH binaries = 0.5. We note that the total PBH
+                                    2                                                                                           monochromatic
+comoving merger rate scales as fPBH     because forming bi-
+
+
+
+
+                                                                             Rtotal(z = 0) (Gpc−3 yr−1)
+                                                                                                                                lognormal with (ln(mc ) = ln(mPBH ))
+naries either at early or late times requires pairs of PBHs.
+Moreover, only early merger channels (unperturbed and
+binary-single) depend on the binary fraction, fPBH binaries
+as their merger rate is proportional to the number of the
+early PBH binaries.
+   In Fig. 8, we show the total comoving PBH merger
+rate Rtotal as a function of redshift z, for five different
+combinations of the PBH fraction fPBH and the PBH
+binary fraction fPBH binaries , assuming that fPBH binaries +                                             105
+fsingle PBH = 1, where the latter fraction is the fraction
+of single PBHs.
+                                                                                                                10   20   30      40  50           60      70          80
+                                                                                                                               mPBH (M )
+                      106
+                                                                            FIG. 9. The total comoving merger rate Rtotal as a func-
+                           5                                                tion of PBH mass mPBH at z = 0, assuming fPBH = 1 and
+ Rtotal(Gpc−3 yr−1)
+
+
+
+
+                      10
+                                                                            fPBH binaries = 0.5.
+                      104
+                                 fPBH = 1.000, fPBH binaries = 0.5
+                      103        fPBH = 1.000, fPBH binaries = 0.01            We find that the merger rate of unperturbed binaries
+                                 fPBH = 0.010, fPBH binaries = 0.1          starts getting suppressed around redshifts z ≲ 10 as the
+                      102        fPBH = 1.000, fPBH binaries = 0
+                                                                            fraction of dark matter outside halos starts to decrease
+                                 fPBH = 0.004, fPBH binaries = 0.5
+                                                                            and dark matter begins to cluster and form halos (shown
+                      101                                                   in Fig. 1). By redshift of z ≃ 1, unperturbed binaries
+                      100                                                   contribute only about 20% of the total merger rate, with
+                                                                            that contribution falling to about 10% at by z = 0.
+                       10−2     10−1            100                   101
+                                                                               In fact, the main contribution to the total PBH merger
+                                       Redshift(z)                          rate comes from binaries inside halos starting from z ≃ 5
+                                                                            (see Fig. 7). While PBH binaries merging at z ≃ 5
+FIG. 8. The total comoving merger rate Rtotal as a function                 have been mostly unperturbed up to the time of their
+of redshift z for different PBH fractions. The five curves                  merger, binaries that merge later, have enough time for
+correspond to different choices of the PBH binary fraction                  their orbital properties’ evolution to be affected by their
+fPBH binaries and the total PBH fraction fPBH . The lower                   respective environments inside the halos, described by
+three rates at z < 1 are consistent with current LVK limits
+                                                                            Eqns. (6)-(9), as we show in Figs. 2, 3 and 4. We simulate
+[21].
+                                                                            the gradual growth of dark matter halos following their
+                                                                            evolution with redshift from Ref. [34], which affects the
+  We find in our simulations that the total merger rate of                  halo environments, i.e., the time-dependent values of dark
+a monochromatic distribution of PBHs with mass mPBH                         matter density and velocity dispersion. Some PBH bina-
+scales as Rtotal (z) ∝ m−0.8
+                        PBH . This is in good agreement                     ries’ orbital evolution may be delayed as a result of PBH
+with the previously derived parametric dependence from                      binary-single interactions, while more commonly these in-
+Refs. [15, 28]. We show this result in Fig. 9, for the merger               teractions accelerate the evolution of the binaries’ orbital
+rate at z = 0 for mPBH mass between 5 and 80 M⊙ .                           properties. Examples of individual binaries evolution are
+                                                                            provided in Fig. 2.
+                                                                               We calculate the merger rate of PBHs inside dark mat-
+                               IV.   Conclusions                            ter halos for different halo masses between 104 M⊙ and
+                                                                            1015 M⊙ and combine the contribution from all halos by
+   In this work, we present a numerical framework to cal-                   properly accounting for the time-evolving halo mass func-
+culate the total comoving merger rate of PBHs from their                    tion [35, 36] (see Figs. 5 and 6). At redshifts ∼ 5 − 10 the
+formation to the present day. We combine the merger                         merger rate from inside halos is dominated by the smaller
+rates from three distinct channels: (i) from unperturbed                    mass halos, as expected given that most dark matter is
+binaries evolving purely through GW emission, in isola-                     in such halos. However, from redshift of ≃ 2, the halos
+tion, outside dark matter halos, (ii) from binaries that fall               that will grow by z = 0 to a mass of 109 − 1013 M⊙ , pro-
+inside halos of different masses and undergo dynamical                      vide the dominant host halo environments for the PBH
+binary-single interactions inside those halos, and (iii) from               mergers. Such an effect can inform future searches for pos-
+late-time binaries formed via GW capture interactions                       sible cross-correlation signals between gravitational-wave
+inside halos.                                                               detections and galaxy catalogues [37].
+                                                                                                                                 10
+
+   Our work shows that including environmental effects         dark matter halo and can also interact with third objects
+to account for binary-single interactions is important for     (other PBHs) in those environments. Thus, in order to
+an accurate PBH merger rate calculation. Adding to the         avoid double counting, we need to estimate the fraction
+merger rate inside halos the component from late-formed        of dark matter that is outside halos, fDM outside (z), i.e.,
+direct captures and from mergers of binaries outside halos,    at distances further away than the halo’s Virial radius at
+we provide a definitive calculation of the total PBH merger    any given redshift z. We define,
+rate up to a redshift of 10 (shown also in Fig. 7). At
+redshifts of z ≲ 2, we find a total merger rate that is a                    fDM outside (z) = 1 − fDM inside (z),             (B1)
+factor of 50% higher compared to the assumption that
+merging PBH binaries evolve from their formation to            where fDM inside (z) the fraction of dark matter inside dark
+their merger effectively unperturbed (e.g. Ref. [15]). Our     matter halos,
+calculated rates can be easily rescaled to account for                                        Z Mmax
+different assumptions on the abundance of PBHs and                                      1                  dn
+                                                                      fDM inside (z) =                 M      (z) dM,          (B2)
+the abundance of initially formed PBH binaries, as we                                  ρm      Mmin        dM
+show in Fig. 8 and Eq. (15), and can be used to derive
+constraints on the abundance of PBHs from ongoing and          where ρm is the comoving matter density and dn(z)/dM
+future gravitational-wave observatories. We calculate the      is the halo mass function giving the comoving number den-
+PBH merger rates for a monochromatic mass distribution         sity of halos per unit mass. We take Mmin = 104 M⊙ and
+with mPBH between 5 and 80 M⊙ and also for log-normal          Mmax = 1015 M⊙ which corresponds to the typical range
+distributions peaking in the same mass range (see Fig. 9).     of halo masses that could be composed entirely of PBHs.
+Our results on the PBH merger rates are made publicly          We use the Press-Schechter halo mass function [35],
+available through Zenodo.
+                                                                                  dn   ρm d ln x−1
+                                                                                     =             f (x),                      (B3)
+                                                                                  dM   M     dM
+                    Acknowledgments
+                                                               with
+  The authors would like to thank David Garfinkle for                                     r
+                                                                                                         δ2
+                                                                                                           
+his valuable input during this project. MA and IC are                                         2 δc
+                                                                                f (x) =            exp − c2 ,                  (B4)
+supported by the National Science Foundation, under                                           π x       2x
+grant PHY-2207912. We acknowledge the use of the
+publicly-available Python package HMFcalc [36] for com-        where x is the variance of the linear matter density field
+puting halo mass functions.                                    and δc = 1.686 is the critical collapse threshold. The
+                                                               mass function is computed using the publicly available
+                                                               Python package HMFcalc [36].
+      A.   Functions for the evolution of the orbital            The redshift evolution of fDM outside (z) is shown in
+               properties of black hole binaries               Fig. 1 as a solid blue curve (right y-axis). We note that
+                                                               around z ≃ 10 the dark matter halo formation starts
+  The functions F (e) and D(e) appearing in Eqs. (2)–(3)       being important and the fraction fDM outside (z) starts to
+are defined as, [26],                                          decrease rapidly.
+                                           
+                    2 −7/2
+                               73 2 37 4
+     F (e) = 1 − e         · 1+ e + e ,            (A1)                      C.    Ionization of soft binaries
+                                24     96
+and                                                                Binaries with a > 1.81ah are soft and can be disrupted
+                                                               by encounters with other PBHs through two processes,
+                                              
+                           2 −5/2
+                                        121 3
+            D(e) = 1 − e            · e+     e .       (A2)    evaporation and ejection [30]. Evaporation occurs when
+                                         304
+                                                               the binary gradually gains energy from multiple distant
+                                                               encounters until it disrupts. The timescale of this process
+ B.    Fraction of unperturbed binaries outside dark           is,
+                       matter halos                                                                  √ env
+                                                                                                      3 vdisp (ri , t)
+                                                                   tevap, i (a, ri , t) =      √                                   .
+   Ref. [15], assumed that all early binaries evolve in                                      16 π B ρenv (ri , t) G a · ln Λbin, i
+isolation across redshift, either because they are not part                                                                      (C1)
+of dark matter halos or because most of the dark matter is     Ejection happens when a single close encounter disrupts
+at the outer parts of halos, where the chance of interaction   the binary. The timescale of such an encounter is,
+with third objects is small. While on average at high                                                √ env
+redshifts this is valid, in our work, we model the evolution                                        3 3 vdisp   (ri , t)
+                                                                           tejc, i (a, ri , t) =   √                       .     (C2)
+of all PBH binaries that are within the Virial radius of a                                       80 π B Gρenv (ri , t) a
+                                                                                                                                      11
+                                                                                                            P
+Consequently, the total disruption (ionization) probability          shell i with halo mass Mi (M =             i Mi ), during dt + t as,
+during the time interval (t, t + dt) is,
+                                                                                            ∆finside (Mi , t + dt)
+                                                                     penter (t + dt, Mi ) =                                    (D1)
+                        h               1          1 i                                       1 − finside (Mi , t)
+       Pion, i = 1 − exp − dt                 +           .   (C3)
+                                     tevap, i   tejc, i                                     finside (Mi , t + dt) − finside (Mi , t)
+                                                                                          =                                          .
+                                                                                                      1 − finside (Mi , t)
+For each binary j, in each spherical shell i, and in each
+timestep dt, we draw a uniform random number ui,j ∈                  The finside (Mi , t) is the probability of PBH binaries being
+[0, 1]. If ui,j < Pion, i,j , binary j is ionized during that        inside a shell of mass Mi at time t,
+timestep. The number of ionizations in shell i over the                                                     Mi (t[z])
+interval (t, t + dt) in the sample is,                                                 finside (Mi , t) =             .            (D2)
+                                                                                                            Mi (t[0])
+                                                                     Note that the normalization by 1 − finside (t) on the prob-
+                                 X
+                 Nion, i (t) =        ionizedi,j ,            (C4)
+                                 j                                   ability operator penter , makes sure that only binaries cur-
+                                                                     rently outside halos are considered to enter 4 . For each
+where ionizedi,j = 1 if ui,j < Pion, i,j , and zero otherwise.       binary in the population at a given time, we draw a uni-
+The probability of a soft binary’s survival at any given             form random number ui ∈ (0, 1)) and use penter (t + dt)
+time and shell is 1 − Pion, i .                                      to decide whether it enters a halo, i.e if ui < penter , the
+                                                                     binary i in the population enters the halo, else , it stays
+                                                                     outside.
+                                                                        When Binaries are outside halos, they evolve via GW
+  D.   Halo effects on populations of merging PBH                    emission only (Eq. (2)), but when they enter inside a halo,
+                         binaries                                    they evolve according to Eqs. (6)–(9), depending on their
+                                                                     type with respect to the halo and when they enter the
+                                                                     halo as per Eq. (D1).
+   To study the effects of halos on the population of PBH
+                                                                        In the top panels of Figs. 10 and 11, we show the same
+binaries and their merger time, we select a sample of
+                                                                     scatter distribution of initial binary population properties
+Nsurv (z = 12) = 4.75 × 106 PBH binaries that formed at
+                                                                     as Fig. 3 of the main text, but now assuming instead
+z = 3400 and have survived GW mergers up to z = 12.
+                                                                     the halo environmental conditions of a host dark matter
+We first evolve this sample assuming the binaries remain
+                                                                     halo of M (z = 0) = 104 M⊙ and a M (z = 0) = 109 M⊙
+unperturbed and evolve via GWs only using Eq.(2) to
+                                                                     halo respectively. In the middle panels of Figs. 10 and 11,
+redshift z = 0, corresponding to the evolution time of
+                                                                     we give the equivalent histograms to the top panel of
+tavaible (z = 12) = 13.43Gyr. For each binary that merges
+                                                                     Fig. 4, but for the 104 and the 109 M⊙ dark matter halos
+within this time range, we record its merging time tmerger
+                                                                     respectively. For the middle panels of Figs. 10 and 11,
+and the initial orbital parameters (ainit , einit ). The result
+                                                                     we take the same environmental assumptions used to get
+is a population of binaries that merge through pure GW
+                                                                     the scatter plots of their respective top panels. Finally,
+evolution is shown in the top panel of Fig. 3, which
+                                                                     in the bottom panels of Figs. 10 and 11, we give the shell
+presents a scatter plot of the initial semi-major axis ainit
+                                                                     mass-weighted merger events for the 104 and the 109 M⊙
+versus 1 − einit for all binaries that merge by today, along
+                                                                     dark matter halos. Binary-single interactions are more
+with the corresponding merger time distribution. Note
+                                                                     important in smaller mass halos as the dynamical terms of
+that for the top panel of Fig. 3, we assume foutside (t) = 1
+                                                                     Eqs. (6) and (9) do affect the merger timescale. Instead,
+throughout all time.
+                                                                     in the most massive dark matter halos, the unperturbed
+   To study the effects of halos, we take this same surviv-          merger rate assumption is effectively correct. Due to the
+ing sample Nsurv (z = 12) = 4.75 × 106 and identify the              stochastic nature of selecting the orbital properties of
+binaries that merge within 100 times the age of the uni-             the PBH binaries at their formation from their under-
+verse if they evolve in isolation. We identify the binaries          lying distribution, the exact number of merged binaries
+that merge within this time window to get a large popu-              between z = 12 and z = 0, may change minimally be-
+lation of binaries (2.49 × 105 ) to evolve in the different          tween simulations. In Fig. 3, and in the green histograms
+environments out of the total Nsurv (z = 12). Our simu-              throughout, there are 90830 binaries that merge in that
+lations study separately the evolution of the 2.49 × 105
+binaries from redshift 12 to 0, on each spherical shell.
+To keep track of the proper fraction of binaries that may
+merge, we take the entire population of 4.75 × 106 binaries          4 The number of binaries that by the end of the simulation are
+
+and calculate when they enter a given shell in a given                 going to be inside a halo mass shell i is less than 4.75 × 106 as
+                                                                       mergers will happen before they enter, and at any earlier time
+halo. We compute the probability of a binary (from the
+                                                                       they are proportional to (1 − finside (t)). As we describe in the
+4.75 × 106 binaries) to enter a simulated shell i of a halo            main text, once evaluating the merger rate per halo we properly
+of mass M , as a function of time.                                     re-weight the merger events to account for the real amount of
+   We define the probability of a PBH binary entering a                dark matter mass in each halo shell (see Eqs. (11)-(13)).
+                                                                                                                                                                                                           12
+
+
+
+
+                      20000         Inside halo                                                                                          Inside halo
+                                    Unperturbed (fDM,outside (z))                                                                        Unperturbed (fDM,outside (z))
+                                    Total = inside-halo + unperturbed (fDM outside (z))                                                  Total = inside-halo + unperturbed (fDM outside (z))
+                                                                                                                            8000         Unperturbed (fDM outside = 1)
+                                    Unperturbed (fDM outside = 1)
+                      15000
+
+
+
+
+                                                                                                        Number of mergers
+  Number of mergers
+
+
+
+
+                                Halo-evolved PBH Binaries                                                                            Halo-evolved PBH Binaries
+                                M(z = 0) = 104 M                                                                                     M(z = 0) = 109 M
+                                Shell i : 1
+                                                                                                                            6000     Shell i : 6
+                                Nmerg in = 120886                                                                                    Nmerg in = 34054
+                                Nmerg out = 47287                                                                                    Nmerg out = 56681
+                      10000                                                                                                          Nmergtotal = 90735
+                                Nmergtotal = 168173
+                                                                                                                            4000
+
+                       5000
+                                                                                                                            2000
+
+
+                          0                                                                                                    0
+                              100                101               102                    103   104                                100                101                102                   103   104
+                                                               tmerge (Myr)                                                                                          tmerge (Myr)
+
+                                    Inside halo                                                                                          Inside halo
+                                    Unperturbed (fDM,outside (z))                                                                        Unperturbed (fDM,outside (z))
+                      10000         Total = inside-halo + unperturbed (fDM outside (z))                                                  Total = inside-halo + unperturbed (fDM outside (z))
+                                    Unperturbed (fDM outside = 1)                                                           8000         Unperturbed (fDM outside = 1)
+  Number of mergers
+
+
+
+
+                                                                                                        Number of mergers
+
+
+
+
+                       8000     Halo-evolved PBH Binaries                                                                            Halo-evolved PBH Binaries
+                                M(z = 0) = 104 M                                                                                     M(z = 0) = 109 M
+                                All shells, mass weighted                                                                   6000     All shells, mass weighted
+                                Nmerg in = 62580                                                                                     Nmerg in = 37033
+                       6000     Nmerg out = 42663                                                                                    Nmerg out = 53873
+                                Nmerg,total = 105243                                                                                 Nmerg,total = 90906
+                                                                                                                            4000
+                       4000
+
+                                                                                                                            2000
+                       2000
+
+                          0 0                                                                                                  0 0
+                          10                  101                102                      103   104                            10                  101                 102                     103   104
+                                                               tmerge (Myr)                                                                                          tmerge (Myr)
+
+FIG. 10. Same as in Figs. 3 and 4, but for a 104 M⊙ halo                                              FIG. 11. Same as in Figs. 3 and 4, but for a 109 M⊙ halo
+environment. In such halos, the merger rates of PBH binaries                                          environment. In such halos, the merger rates of PBH binaries
+is enhanced.                                                                                          is essentially the same as that of unperturbed binaries.
+
+
+
+                                                                                                       E.                    The PBH binary population and its sampling
+                                                                                                                                            procedure
+interval, in isolation, i.e. unperturbed from third objects.
+In the panels of Fig. 11, the number of mergers (90735                                                  At each timestep (t, t + dt) of our simulations the
+and 90906) inside the halos is essentially the same as that                                           actual number of PBH binaries inside halo shell i,
+of unperturbed binaries.                                                                              NPBH binaries,i (t), is updated as follows: (1) binaries that
+                                                                                                                             13
+
+survive merging or getting ionized during the interval            in each timestep, the evolving sample is split into sur-
+(t, t + dt) are retained, and (2) newly added binaries            vived and newly added binaries according to their relative
+Nnew PBH binaries,i (t + dt) outside halos enter shell i due      fractions in each shell i. The fraction of new binaries in
+to growth in the shell (and overall halo) mass. This              shell i at time t + dt is,
+translates to,
+                                                                                           Nnew PBH binaries,i (t + dt)
+                                                                       fnew,i (t + dt) =                                .   (E2)
+  NPBH binaries,i (t + dt) =Sisurv (t) NPBH binaries,i (t)                                  NPBH binaries,i (t + dt)
+                              + Nnew PBH binaries,i (t + dt),        The survived sample is drawn from binaries that did
+                                                          (E1)    not merge or get ionized during the previous timestep
+                                                                  in shell i. The new sample is drawn from unperturbed
+where Sisurv (t) is the probability of survival of all binaries   (i.e, isolated) binaries that in the previous timestep were
+(hard and soft) from either mergers or ionizations. Mean-         outside the halo. This approach makes sure that our
+while, to make sure the sample in shell i, Nsample,i (t),         sample accurately reflects the evolving binary population
+stays accurate and reflects the two populations of binaries       within each halo shell.
+
+
+
+
+ [1] B. P. Abbott et al. (LIGO Scientific, Virgo), “Observation        tribution of the LIGO-Virgo-KAGRA events,” Phys. Rev.
+     of Gravitational Waves from a Binary Black Hole Merger,”          D 111, 043020 (2025), arXiv:2409.00179 [astro-ph.CO].
+     Phys. Rev. Lett. 116, 061102 (2016), arXiv:1602.03837        [12] Ely D. Kovetz, Ilias Cholis, Patrick C. Breysse, and Marc
+     [gr-qc].                                                          Kamionkowski, “Black hole mass function from gravita-
+ [2] R. Abbott et al. (KAGRA, VIRGO, LIGO Scientific),                 tional wave measurements,” Phys. Rev. D 95, 103010
+     “Population of Merging Compact Binaries Inferred Using            (2017), arXiv:1611.01157 [astro-ph.CO].
+     Gravitational Waves through GWTC-3,” Phys. Rev. X            [13] Ely D. Kovetz, “Probing Primordial-Black-Hole Dark Mat-
+     13, 011048 (2023), arXiv:2111.03634 [astro-ph.HE].                ter with Gravitational Waves,” Phys. Rev. Lett. 119,
+ [3] R. Abbott et al. (KAGRA, VIRGO, LIGO Scientific),                 131301 (2017), arXiv:1705.09182 [astro-ph.CO].
+     “GWTC-3: Compact Binary Coalescences Observed                [14] Volodymyr Takhistov, “Transmuted Gravity Wave Signals
+     by LIGO and Virgo during the Second Part of the                   from Primordial Black Holes,” Phys. Lett. B 782, 77–82
+     Third Observing Run,” Phys. Rev. X 13, 041039 (2023),             (2018), arXiv:1707.05849 [astro-ph.CO].
+     arXiv:2111.03606 [gr-qc].                                    [15] Yacine Ali-Haïmoud, Ely D. Kovetz,              and Marc
+ [4] Misao Sasaki, Teruaki Suyama, Takahiro Tanaka, and                Kamionkowski, “Merger rate of primordial black-hole bi-
+     Shuichiro Yokoyama, “Primordial Black Hole Scenario for           naries,” Phys. Rev. D 96, 123523 (2017), arXiv:1709.06576
+     the Gravitational-Wave Event GW150914,” Phys. Rev.                [astro-ph.CO].
+     Lett. 117, 061101 (2016), [Erratum: Phys.Rev.Lett. 121,      [16] Nicola Bellomo, José Luis Bernal, Alvise Raccanelli,
+     059901 (2018)], arXiv:1603.08338 [astro-ph.CO].                   and Licia Verde, “Primordial Black Holes as Dark Mat-
+ [5] Simeon Bird, Ilias Cholis, Julian B. Muñoz, Yacine Ali-           ter: Converting Constraints from Monochromatic to
+     Haïmoud, Marc Kamionkowski, Ely D. Kovetz, Alvise                 Extended Mass Distributions,” JCAP 01, 004 (2018),
+     Raccanelli, and Adam G. Riess, “Did LIGO detect                   arXiv:1709.07467 [astro-ph.CO].
+     dark matter?” Phys. Rev. Lett. 116, 201301 (2016),           [17] Emanuele Berti et al., “Tests of General Relativity and
+     arXiv:1603.00464 [astro-ph.CO].                                   Fundamental Physics with Space-based Gravitational
+ [6] Bernard Carr, Florian Kuhnel, and Marit Sandstad,                 Wave Detectors,” (2019), arXiv:1903.02781 [astro-ph.HE].
+     “Primordial Black Holes as Dark Matter,” Phys. Rev. D        [18] Andrew D. Gow, Christian T. Byrnes, Alex Hall, and
+     94, 083504 (2016), arXiv:1607.06077 [astro-ph.CO].                John A. Peacock, “Primordial black hole merger rates:
+ [7] Stephen Hawking, “Gravitationally collapsed objects of            distributions for multiple LIGO observables,” JCAP 01,
+     very low mass,” Mon. Not. Roy. Astron. Soc. 152, 75               031 (2020), arXiv:1911.12685 [astro-ph.CO].
+     (1971).                                                      [19] Alex Hall, Andrew D. Gow, and Christian T. Byrnes,
+ [8] Ya. B. Zel’dovich and I. D. Novikov, “The Hypothesis of           “Bayesian analysis of LIGO-Virgo mergers: Primordial vs.
+     Cores Retarded during Expansion and the Hot Cosmolog-             astrophysical black hole populations,” Phys. Rev. D 102,
+     ical Model,” Sov. Astron. 10, 602 (1967).                         123524 (2020), arXiv:2008.13704 [astro-ph.CO].
+ [9] Konstantinos Kritos and Ilias Cholis, “Evaluating the        [20] M. Andrés-Carcasona, A. J. Iovino, V. Vaskonen, H. Veer-
+     merger rate of binary black holes from direct captures            mäe, M. Martínez, O. Pujolàs, and Ll. M. Mir, “Con-
+     and third-body soft interactions using the Milky Way              straints on primordial black holes from LIGO-Virgo-
+     globular clusters,” Phys. Rev. D 102, 083016 (2020),              KAGRA O3 events,” Phys. Rev. D 110, 023040 (2024),
+     arXiv:2007.02968 [astro-ph.GA].                                   arXiv:2405.05732 [astro-ph.CO].
+[10] Konstantinos Kritos, Vladimir Strokov, Vishal Baibhav,       [21] Mehdi El Bouhaddouti, Muhsin Aljaf, and Ilias Cho-
+     and Emanuele Berti, “Dynamical formation of black hole            lis, “Conservative limits on primordial black holes
+     binaries in dense star clusters: Rapid cluster evolution          from the LIGO-Virgo-KAGRA observations,” (2025),
+     code,” Phys. Rev. D 110, 043023 (2024), arXiv:2210.10055          arXiv:2502.00144 [astro-ph.CO].
+     [astro-ph.HE].                                               [22] Martti Raidal, Ville Vaskonen, and Hardi Veermäe, “For-
+[11] Mehdi El Bouhaddouti and Ilias Cholis, “On the mass dis-          mation of Primordial Black Hole Binaries and Their
+                                                                                                                              14
+
+     Merger Rates,” in Primordial Black Holes, edited by          [30] James Binney and Scott Tremaine, Galactic dynamics
+     Christian Byrnes, Gabriele Franciolini, Tomohiro Harada,          (1987).
+     Paolo Pani, and Misao Sasaki (2025) arXiv:2404.08416         [31] Gerald D. Quinlan, “The dynamical evolution of mas-
+     [astro-ph.CO].                                                    sive black hole binaries - I. hardening in a fixed stellar
+[23] Muhsin Aljaf and Ilias Cholis, “Simulating binary primor-         background,” New Astron. 1, 35–56 (1996), arXiv:astro-
+     dial black hole mergers in dark matter halos,” Phys. Rev.         ph/9601092.
+     D 111, 063020 (2025).                                        [32] Alberto Sesana, Francesco Haardt, and Piero Madau, “In-
+[24] Ilias Cholis, Ely D. Kovetz, Yacine Ali-Haïmoud, Simeon           teraction of massive black hole binaries with their stellar
+     Bird, Marc Kamionkowski, Julian B. Muñoz, and                     environment. 1. Ejection of hypervelocity stars,” Astro-
+     Alvise Raccanelli, “Orbital eccentricities in primordial          phys. J. 651, 392–400 (2006), arXiv:astro-ph/0604299.
+     black hole binaries,” Phys. Rev. D 94, 084013 (2016),        [33] Julio F. Navarro, Carlos S. Frenk, and Simon D. M.
+     arXiv:1606.07437 [astro-ph.HE].                                   White, “The Structure of cold dark matter halos,” Astro-
+[25] N. Aghanim et al. (Planck), “Planck 2018 results. VI.             phys. J. 462, 563–575 (1996), arXiv:astro-ph/9508025.
+     Cosmological parameters,” Astron. Astrophys. 641, A6         [34] Camila A. Correa, J. Stuart B. Wyithe, Joop Schaye,
+     (2020), [Erratum: Astron.Astrophys. 652, C4 (2021)],              and Alan R. Duffy, “The accretion history of dark matter
+     arXiv:1807.06209 [astro-ph.CO].                                   haloes – II. The connections with the mass power spec-
+[26] P. C. Peters, “Gravitational Radiation and the Motion             trum and the density profile,” Mon. Not. Roy. Astron. Soc.
+     of Two Point Masses,” Physical Review 136, 1224–1232              450, 1521–1537 (2015), arXiv:1501.04382 [astro-ph.CO].
+     (1964).                                                      [35] William H. Press and Paul Schechter, “Formation of galax-
+[27] Gabriele Franciolini, Roberto Cotesta, Nicholas Loutrel,          ies and clusters of galaxies by selfsimilar gravitational
+     Emanuele Berti, Paolo Pani, and Antonio Riotto, “How              condensation,” Astrophys. J. 187, 425–438 (1974).
+     to assess the primordial origin of single gravitational-     [36] Steven Murray, Chris Power, and A. S. G. Robotham,
+     wave events with mass, spin, eccentricity, and deforma-           “HMFcalc: An online tool for calculating dark matter
+     bility measurements,” Phys. Rev. D 105, 063510 (2022),            halo mass functions,” Astron. Comput. 3-4, 23–34 (2013),
+     arXiv:2112.10660 [astro-ph.CO].                                   arXiv:1306.6721 [astro-ph.CO].
+[28] Bradley J. Kavanagh, Daniele Gaggero, and Gianfranco         [37] Alvise Raccanelli, Ely D. Kovetz, Simeon Bird, Ilias Cho-
+     Bertone, “Merger rate of a subdominant population of              lis, and Julian B. Munoz, “Determining the progenitors
+     primordial black holes,” Phys. Rev. D 98, 023536 (2018),          of merging black-hole binaries,” Phys. Rev. D 94, 023516
+     arXiv:1805.09034 [astro-ph.CO].                                   (2016), arXiv:1605.01405 [astro-ph.CO].
+[29] D. C. Heggie, “Binary evolution in stellar dynamics,” Mon.
+     Not. Roy. Astron. Soc. 173, 729–787 (1975).
+
