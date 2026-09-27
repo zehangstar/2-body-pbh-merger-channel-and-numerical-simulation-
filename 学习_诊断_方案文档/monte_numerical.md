@@ -337,7 +337,8 @@ $\lambda=-\frac{\dot a}a =\mathcal A a+\frac{\mathcal B}{a^4}F(e)>0.$
 $\frac{d\tau}{du}=\frac1\lambda,\qquad
 \frac{dy}{du} =-\frac{2e}{1-e^2}\frac{\dot e}{\lambda}.$
 
-恢复关系为 $a=a_{\rm ref}e^{-u}$、$e=\sqrt{1-e^y}$。小 $a$、高 $e$ 的快速 GW 演化被转成较易控制的收缩坐标；实现以对数形式组合大项，减少浮点溢出。
+恢复关系为 $a=a_{\rm ref}e^{-u}$、$e=\sqrt{1-e^y}
+$。小 $a$、高 $e$ 的快速 GW 演化被转成较易控制的收缩坐标；实现以对数形式组合大项，减少浮点溢出。
 
 积分采用逐轨道独立步长、批量向量化的 Dormand–Prince 5 (4)，接受步由相对 / 绝对容差控制，时间边界用稠密输出定位。默认 rtol 为 $10^{-6}$，最大 $\Delta u=0.25$；遗留 local\_timestep\_myr=2 不代表 Adaptive 的实际步长。
 
